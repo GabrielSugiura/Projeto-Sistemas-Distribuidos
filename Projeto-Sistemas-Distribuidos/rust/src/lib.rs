@@ -20,12 +20,10 @@ impl LogicalClock {
         }
     }
 
-    /// Incrementa antes de enviar cada mensagem e retorna o novo valor
     pub fn tick_send(&self) -> u64 {
         self.counter.fetch_add(1, Ordering::SeqCst) + 1
     }
 
-    /// Atualiza com max(local, recebido) ao receber mensagem
     pub fn update_receive(&self, received: u64) -> u64 {
         let mut current = self.counter.load(Ordering::SeqCst);
         loop {
@@ -49,7 +47,7 @@ impl LogicalClock {
     }
 }
 
-/// Sincronização do relógio físico do servidor com o serviço de referência
+/// Sincronização do relógio físico via Algoritmo de Berkeley
 pub struct PhysicalClockSync {
     offset_ms: Mutex<f64>,
 }
@@ -61,19 +59,21 @@ impl PhysicalClockSync {
         }
     }
 
-    pub fn sync_with_reference(&self, t0_local_ms: f64, ref_epoch_ms: f64, t1_local_ms: f64) -> f64 {
-        let rtt_ms = (t1_local_ms - t0_local_ms).max(0.0);
-        let estimated_ref_ms = ref_epoch_ms + (rtt_ms / 2.0);
-        let offset = estimated_ref_ms - t1_local_ms;
+    pub fn apply_offset_delta(&self, delta_ms: f64) -> f64 {
         if let Ok(mut guard) = self.offset_ms.lock() {
-            *guard = offset;
+            *guard += delta_ms;
+            return *guard;
         }
-        offset
+        0.0
+    }
+
+    pub fn current_epoch_ms(&self) -> f64 {
+        let offset = self.offset_ms.lock().map(|g| *g).unwrap_or(0.0);
+        (Utc::now().timestamp_millis() as f64) + offset
     }
 
     pub fn now_iso(&self) -> String {
-        let offset = self.offset_ms.lock().map(|g| *g).unwrap_or(0.0);
-        let adjusted_ms = (Utc::now().timestamp_millis() as f64 + offset).round() as i64;
+        let adjusted_ms = self.current_epoch_ms().round() as i64;
         DateTime::<Utc>::from_timestamp_millis(adjusted_ms)
             .unwrap_or_else(Utc::now)
             .to_rfc3339_opts(SecondsFormat::Millis, true)
@@ -111,6 +111,8 @@ pub struct ResponseMessage {
     pub server_id: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub server_rank: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub coordinator: Option<String>,
     pub timestamp: String,
     #[serde(default)]
     pub logical_clock: u64,
@@ -124,6 +126,8 @@ pub struct PubSubMessage {
     pub server_id: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub server_rank: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub coordinator: Option<String>,
     pub timestamp: String,
     #[serde(default)]
     pub logical_clock: u64,
@@ -154,10 +158,59 @@ pub struct ReferenceResponse {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub servers: Option<Vec<ServerEntry>>,
     pub message: String,
+    pub timestamp: String,
+    #[serde(default)]
+    pub logical_clock: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PeerRequest {
+    pub action: String,
+    #[serde(default)]
+    pub from_server: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub reference_timestamp: Option<String>,
+    pub candidate: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub reference_epoch_ms: Option<f64>,
+    pub rank: Option<u64>,
+    #[serde(default)]
+    pub timestamp: String,
+    #[serde(default)]
+    pub logical_clock: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PeerResponse {
+    pub status: String,
+    pub action: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub message: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub server_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rank: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub epoch_ms: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hora_correta: Option<String>,
+    #[serde(default)]
+    pub timestamp: String,
+    #[serde(default)]
+    pub logical_clock: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CoordinatorAnnouncement {
+    #[serde(default)]
+    pub topic: String,
+    #[serde(default)]
+    pub event: String,
+    #[serde(default)]
+    pub coordinator: String,
+    #[serde(default)]
+    pub server_id: String,
+    #[serde(default)]
+    pub rank: u64,
+    #[serde(default)]
     pub timestamp: String,
     #[serde(default)]
     pub logical_clock: u64,
@@ -300,7 +353,35 @@ pub fn unpack_ref_response(bytes: &[u8]) -> Result<ReferenceResponse, rmp_serde:
     rmp_serde::from_slice(bytes)
 }
 
-fn record_message_history<T: Serialize>(
+pub fn pack_peer_request(req: &PeerRequest) -> Result<Vec<u8>, rmp_serde::encode::Error> {
+    rmp_serde::to_vec_named(req)
+}
+
+pub fn unpack_peer_request(bytes: &[u8]) -> Result<PeerRequest, rmp_serde::decode::Error> {
+    rmp_serde::from_slice(bytes)
+}
+
+pub fn pack_peer_response(rep: &PeerResponse) -> Result<Vec<u8>, rmp_serde::encode::Error> {
+    rmp_serde::to_vec_named(rep)
+}
+
+pub fn unpack_peer_response(bytes: &[u8]) -> Result<PeerResponse, rmp_serde::decode::Error> {
+    rmp_serde::from_slice(bytes)
+}
+
+pub fn pack_coordinator_announcement(
+    ann: &CoordinatorAnnouncement,
+) -> Result<Vec<u8>, rmp_serde::encode::Error> {
+    rmp_serde::to_vec_named(ann)
+}
+
+pub fn unpack_coordinator_announcement(
+    bytes: &[u8],
+) -> Result<CoordinatorAnnouncement, rmp_serde::decode::Error> {
+    rmp_serde::from_slice(bytes)
+}
+
+pub fn record_message_history<T: Serialize>(
     actor: &str,
     direction: &str,
     payload: &T,
@@ -396,6 +477,9 @@ pub fn format_response_log(actor: &str, direction: &str, rep: &ResponseMessage) 
     let _ = writeln!(out, "  server_id    : {}", rep.server_id);
     if let Some(rk) = rep.server_rank {
         let _ = writeln!(out, "  server_rank  : {}", rk);
+    }
+    if let Some(ref cd) = rep.coordinator {
+        let _ = writeln!(out, "  coordinator  : {}", cd);
     }
     let _ = writeln!(out, "  timestamp    : {}", rep.timestamp);
     let _ = writeln!(out, "  logical_clock: {}", rep.logical_clock);
