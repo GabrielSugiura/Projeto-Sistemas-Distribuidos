@@ -2,6 +2,8 @@ from datetime import datetime, timezone
 import json
 import os
 import re
+import threading
+import time
 import msgpack
 
 USER_REGEX = re.compile(r"^[a-zA-Z0-9_-]{3,24}$")
@@ -9,8 +11,69 @@ CHANNEL_REGEX = re.compile(r"^[a-z0-9_-]{2,32}$")
 CONTROL_CODES_REGEX = re.compile(r"\^(?:W\d+|M\d+|O)")
 
 
+class LogicalClock:
+    """Relógio Lógico de Lamport thread-safe."""
+
+    def __init__(self, initial: int = 0) -> None:
+        self._counter = initial
+        self._lock = threading.Lock()
+
+    def tick_send(self) -> int:
+        """Incrementa antes de enviar qualquer mensagem e retorna o novo valor."""
+        with self._lock:
+            self._counter += 1
+            return self._counter
+
+    def update_receive(self, received_counter: int | None) -> int:
+        """Atualiza com max(local, recebido) ao receber mensagem."""
+        with self._lock:
+            if isinstance(received_counter, int) and received_counter > self._counter:
+                self._counter = received_counter
+            return self._counter
+
+    @property
+    def value(self) -> int:
+        with self._lock:
+            return self._counter
+
+
+class PhysicalClockSync:
+    """Mantém o offset (ms) em relação ao relógio físico do serviço de referência."""
+
+    def __init__(self) -> None:
+        self._offset_ms: float = 0.0
+        self._lock = threading.Lock()
+
+    def sync_with_reference(self, t0_local_ms: float, ref_epoch_ms: float, t1_local_ms: float) -> float:
+        """Calcula offset estilo algoritmo de Cristian: ref_time + RTT/2 - t1."""
+        rtt_ms = max(0.0, t1_local_ms - t0_local_ms)
+        estimated_ref_ms = ref_epoch_ms + (rtt_ms / 2.0)
+        offset = estimated_ref_ms - t1_local_ms
+        with self._lock:
+            self._offset_ms = offset
+            return self._offset_ms
+
+    def now_iso(self) -> str:
+        with self._lock:
+            adjusted_sec = (time.time() * 1000.0 + self._offset_ms) / 1000.0
+        return (
+            datetime.fromtimestamp(adjusted_sec, tz=timezone.utc)
+            .isoformat(timespec="milliseconds")
+            .replace("+00:00", "Z")
+        )
+
+    @property
+    def offset_ms(self) -> float:
+        with self._lock:
+            return self._offset_ms
+
+
 def now_iso() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+
+
+def now_epoch_ms() -> float:
+    return time.time() * 1000.0
 
 
 def clean_script_text(text: str) -> str:
@@ -68,7 +131,7 @@ def format_log(actor: str, direction: str, payload: dict) -> str:
     ]
     for k, v in payload.items():
         if v is not None:
-            lines.append(f"  {k:<21}: {v}")
+            lines.append(f"  {k:<22}: {v}")
     lines.append(sep)
     return "\n".join(lines)
 
