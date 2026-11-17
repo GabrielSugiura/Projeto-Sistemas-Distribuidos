@@ -1,7 +1,5 @@
 # Sistema de Troca de Mensagens Instantâneas (Projeto Sistemas Distribuidos)
 
-Este repositório contém a implementação completa das **5 partes** do projeto de Sistemas Distribuídos: um sistema de troca de mensagens instantâneas inspirado em **BBS** e **IRC**, construído sobre **ZeroMQ**, **MessagePack**, **Docker** e **Docker Compose**, com servidores e clientes heterogêneos em **Python** e **Rust**.
-
 ### Resumo das Funcionalidades Implementadas
 * **Parte 1 (Broker `ROUTER/DEALER` + `REQ/REP` + Persistência Binária):** Balanceamento *round-robin* entre 4 servidores (2 Python, 2 Rust) atendendo 4 bots, com serialização em **MessagePack** e persistência em disco (`/data/storage.msgpack`).
 * **Parte 2 (Publicação e Assinatura `PUB/SUB`):** Proxy dedicado (`XSUB:5557` / `XPUB:5558`) para difusão em tempo real nos canais criados dinamicamente.
