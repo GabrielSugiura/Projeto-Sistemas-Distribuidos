@@ -1,0 +1,208 @@
+services:
+  broker:
+    build:
+      context: ./python
+      dockerfile: Dockerfile
+    container_name: bbs-broker
+    command: ["python", "-u", "broker.py"]
+    environment:
+      - FRONTEND_ADDR=tcp://*:5555
+      - BACKEND_ADDR=tcp://*:5556
+    networks:
+      - bbs-net
+
+  # ================= SERVIDORES PYTHON (2 instâncias) =================
+  server-python-1:
+    build:
+      context: ./python
+      dockerfile: Dockerfile
+    container_name: server-python-1
+    command: ["python", "-u", "server.py"]
+    environment:
+      - SERVER_ID=server-python-1
+      - BROKER_BACKEND=tcp://broker:5556
+      - DATA_FILE=/data/storage.msgpack
+      - MESSAGE_LOG_FILE=/logs/server-python-1.jsonl
+    volumes:
+      - ./dados/server-python-1:/data
+      - ./dados/historico_mensagens:/logs
+    depends_on:
+      - broker
+    networks:
+      - bbs-net
+
+  server-python-2:
+    build:
+      context: ./python
+      dockerfile: Dockerfile
+    container_name: server-python-2
+    command: ["python", "-u", "server.py"]
+    environment:
+      - SERVER_ID=server-python-2
+      - BROKER_BACKEND=tcp://broker:5556
+      - DATA_FILE=/data/storage.msgpack
+      - MESSAGE_LOG_FILE=/logs/server-python-2.jsonl
+    volumes:
+      - ./dados/server-python-2:/data
+      - ./dados/historico_mensagens:/logs
+    depends_on:
+      - broker
+    networks:
+      - bbs-net
+
+  # ================= SERVIDORES RUST (2 instâncias) =================
+  server-rust-1:
+    build:
+      context: ./rust
+      dockerfile: Dockerfile
+    container_name: server-rust-1
+    command: ["/app/bin/server"]
+    environment:
+      - SERVER_ID=server-rust-1
+      - BROKER_BACKEND=tcp://broker:5556
+      - DATA_FILE=/data/storage.msgpack
+      - MESSAGE_LOG_FILE=/logs/server-rust-1.jsonl
+    volumes:
+      - ./dados/server-rust-1:/data
+      - ./dados/historico_mensagens:/logs
+    depends_on:
+      - broker
+    networks:
+      - bbs-net
+
+  server-rust-2:
+    build:
+      context: ./rust
+      dockerfile: Dockerfile
+    container_name: server-rust-2
+    command: ["/app/bin/server"]
+    environment:
+      - SERVER_ID=server-rust-2
+      - BROKER_BACKEND=tcp://broker:5556
+      - DATA_FILE=/data/storage.msgpack
+      - MESSAGE_LOG_FILE=/logs/server-rust-2.jsonl
+    volumes:
+      - ./dados/server-rust-2:/data
+      - ./dados/historico_mensagens:/logs
+    depends_on:
+      - broker
+    networks:
+      - bbs-net
+
+  # ================= CLIENTES / BOTS PYTHON (2 instâncias) =================
+  client-python-1:
+    build:
+      context: ./python
+      dockerfile: Dockerfile
+    container_name: client-python-1
+    command: ["python", "-u", "client.py"]
+    environment:
+      - BOT_NAME=bot_py_alpha
+      - BOT_INDEX=0
+      - TOTAL_BOTS=4
+      - BROKER_FRONTEND=tcp://broker:5555
+      - TARGET_CHANNELS=geral,hacking,python-dev
+      - MESSAGES_FILE=/app/messages.txt
+      - MESSAGE_INTERVAL=2.0
+      - STARTUP_DELAY=3.0
+      - MESSAGE_LOG_FILE=/logs/bot_py_alpha.jsonl
+    volumes:
+      - ./messages.txt:/app/messages.txt:ro
+      - ./dados/historico_mensagens:/logs
+    depends_on:
+      - broker
+      - server-python-1
+      - server-python-2
+      - server-rust-1
+      - server-rust-2
+    networks:
+      - bbs-net
+
+  client-python-2:
+    build:
+      context: ./python
+      dockerfile: Dockerfile
+    container_name: client-python-2
+    command: ["python", "-u", "client.py"]
+    environment:
+      - BOT_NAME=bot_py_beta
+      - BOT_INDEX=1
+      - TOTAL_BOTS=4
+      - BROKER_FRONTEND=tcp://broker:5555
+      - TARGET_CHANNELS=geral,hacking,avisos
+      - MESSAGES_FILE=/app/messages.txt
+      - MESSAGE_INTERVAL=2.0
+      - STARTUP_DELAY=3.5
+      - MESSAGE_LOG_FILE=/logs/bot_py_beta.jsonl
+    volumes:
+      - ./messages.txt:/app/messages.txt:ro
+      - ./dados/historico_mensagens:/logs
+    depends_on:
+      - broker
+      - server-python-1
+      - server-python-2
+      - server-rust-1
+      - server-rust-2
+    networks:
+      - bbs-net
+
+  # ================= CLIENTES / BOTS RUST (2 instâncias) =================
+  client-rust-1:
+    build:
+      context: ./rust
+      dockerfile: Dockerfile
+    container_name: client-rust-1
+    command: ["/app/bin/client"]
+    environment:
+      - BOT_NAME=bot_rs_gamma
+      - BOT_INDEX=2
+      - TOTAL_BOTS=4
+      - BROKER_FRONTEND=tcp://broker:5555
+      - TARGET_CHANNELS=geral,hacking,rust-lang
+      - MESSAGES_FILE=/app/messages.txt
+      - MESSAGE_INTERVAL=2.0
+      - STARTUP_DELAY=4.0
+      - MESSAGE_LOG_FILE=/logs/bot_rs_gamma.jsonl
+    volumes:
+      - ./messages.txt:/app/messages.txt:ro
+      - ./dados/historico_mensagens:/logs
+    depends_on:
+      - broker
+      - server-python-1
+      - server-python-2
+      - server-rust-1
+      - server-rust-2
+    networks:
+      - bbs-net
+
+  client-rust-2:
+    build:
+      context: ./rust
+      dockerfile: Dockerfile
+    container_name: client-rust-2
+    command: ["/app/bin/client"]
+    environment:
+      - BOT_NAME=bot_rs_delta
+      - BOT_INDEX=3
+      - TOTAL_BOTS=4
+      - BROKER_FRONTEND=tcp://broker:5555
+      - TARGET_CHANNELS=geral,hacking,sistemas-distribuidos
+      - MESSAGES_FILE=/app/messages.txt
+      - MESSAGE_INTERVAL=2.0
+      - STARTUP_DELAY=4.5
+      - MESSAGE_LOG_FILE=/logs/bot_rs_delta.jsonl
+    volumes:
+      - ./messages.txt:/app/messages.txt:ro
+      - ./dados/historico_mensagens:/logs
+    depends_on:
+      - broker
+      - server-python-1
+      - server-python-2
+      - server-rust-1
+      - server-rust-2
+    networks:
+      - bbs-net
+
+networks:
+  bbs-net:
+    driver: bridge
