@@ -229,6 +229,7 @@ fn main() {
             user: Some(bot_name.clone()),
             channel: None,
             content: None,
+            limit: None,
             timestamp: String::new(),
             logical_clock: 0,
         };
@@ -256,6 +257,7 @@ fn main() {
             user: Some(bot_name.clone()),
             channel: None,
             content: None,
+            limit: None,
             timestamp: String::new(),
             logical_clock: 0,
         };
@@ -292,6 +294,7 @@ fn main() {
                 user: Some(bot_name.clone()),
                 channel: Some(new_channel.clone()),
                 content: None,
+                limit: None,
                 timestamp: String::new(),
                 logical_clock: 0,
             };
@@ -362,6 +365,7 @@ fn main() {
                 user: Some(bot_name.clone()),
                 channel: Some(target_channel.clone()),
                 content: Some(content),
+                limit: None,
                 timestamp: String::new(),
                 logical_clock: 0,
             };
@@ -375,6 +379,35 @@ fn main() {
                 pub_req,
             );
             thread::sleep(interval);
+        }
+
+        let hist_req = RequestMessage {
+            action: "get_history".to_string(),
+            user: Some(bot_name.clone()),
+            channel: None,
+            content: None,
+            limit: Some(20),
+            timestamp: String::new(),
+            logical_clock: 0,
+        };
+        if let Some(rep_hist) = send_and_recv(
+            &ctx,
+            &mut req_socket,
+            &broker_frontend,
+            &bot_name,
+            &clock,
+            hist_req,
+        ) {
+            if rep_hist.status == "ok" {
+                println!(
+                    "[{}] [{}] [HISTÓRICO REPLICADO] Servidor '{}' possui {:?} mensagens totais replicadas.",
+                    now_iso(),
+                    bot_name,
+                    rep_hist.server_id,
+                    rep_hist.total_messages
+                );
+                let _ = io::stdout().flush();
+            }
         }
     }
 }
