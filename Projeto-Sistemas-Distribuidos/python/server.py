@@ -1,6 +1,7 @@
 import os
 import signal
 import sys
+import time
 import zmq
 import msgpack
 from protocol import (
@@ -27,11 +28,11 @@ class DiskStorage:
                     if isinstance(data, dict):
                         data.setdefault("logins", [])
                         data.setdefault("channels", [])
-                        data.setdefault("messages", [])
+                        data.setdefault("publications", [])
                         return data
             except Exception as exc:
                 print(f"[{now_iso()}] [STORAGE] Aviso ao ler {self.filepath}: {exc}", flush=True)
-        return {"logins": [], "channels": [], "messages": []}
+        return {"logins": [], "channels": [], "publications": []}
 
     def _save(self) -> None:
         tmp_path = f"{self.filepath}.tmp"
@@ -58,21 +59,36 @@ class DiskStorage:
         self._save()
         return True, f"Canal '{channel}' criado com sucesso."
 
-    def record_message(self, user: str, channel: str, content: str, timestamp: str) -> None:
+    def record_publication(
+        self,
+        channel: str,
+        user: str,
+        content: str,
+        server_id: str,
+        req_timestamp: str,
+        published_at: str,
+    ) -> None:
         if channel not in self.state["channels"] and CHANNEL_REGEX.match(channel):
             self.state["channels"].append(channel)
-        self.state["messages"].append(
+        self.state["publications"].append(
             {
-                "user": user,
                 "channel": channel,
+                "user": user,
                 "content": content,
-                "timestamp": timestamp,
+                "server_id": server_id,
+                "req_timestamp": req_timestamp,
+                "published_at": published_at,
             }
         )
         self._save()
 
 
-def handle_request(server_id: str, storage: DiskStorage, req: dict) -> dict:
+def handle_request(
+    server_id: str,
+    storage: DiskStorage,
+    pub_socket: zmq.Socket,
+    req: dict,
+) -> dict:
     action = str(req.get("action") or "").strip()
     user = str(req.get("user") or "").strip()
     req_ts = str(req.get("timestamp") or "").strip()
@@ -126,22 +142,53 @@ def handle_request(server_id: str, storage: DiskStorage, req: dict) -> dict:
             "timestamp": now_iso(),
         }
 
-    if action == "post_message":
-        channel = str(req.get("channel") or "geral").strip()
-        content = str(req.get("content") or "").strip()
-        if not content:
+    if action in ("publish", "post_message"):
+        channel = str(req.get("channel") or "").strip()
+        content = str(req.get("content") or req.get("message") or "").strip()
+
+        if not channel or not CHANNEL_REGEX.match(channel):
             return {
                 "status": "error",
-                "action": "post_message",
-                "message": "Conteúdo da mensagem não pode ser vazio.",
+                "action": "publish",
+                "message": f"Canal inválido para publicação: '{channel}'.",
                 "server_id": server_id,
                 "timestamp": now_iso(),
             }
-        storage.record_message(user=user or "anon", channel=channel, content=content, timestamp=req_ts)
+        if not content:
+            return {
+                "status": "error",
+                "action": "publish",
+                "message": "Conteúdo da publicação não pode ser vazio.",
+                "server_id": server_id,
+                "timestamp": now_iso(),
+            }
+
+        pub_ts = now_iso()
+        author = user if user else "anon"
+        pub_payload = {
+            "channel": channel,
+            "user": author,
+            "content": content,
+            "server_id": server_id,
+            "timestamp": pub_ts,
+        }
+
+        pub_socket.send_multipart([channel.encode("utf-8"), pack_message(pub_payload)])
+        print(format_log(server_id, f"PUBLICADO (PUB) -> TÓPICO '#{channel}'", pub_payload), flush=True)
+
+        storage.record_publication(
+            channel=channel,
+            user=author,
+            content=content,
+            server_id=server_id,
+            req_timestamp=req_ts,
+            published_at=pub_ts,
+        )
+
         return {
             "status": "ok",
-            "action": "post_message",
-            "message": f"Mensagem de '{user}' registrada em '#{channel}'.",
+            "action": "publish",
+            "message": f"Mensagem publicada no canal '#{channel}' com sucesso.",
             "server_id": server_id,
             "timestamp": now_iso(),
         }
@@ -158,21 +205,30 @@ def handle_request(server_id: str, storage: DiskStorage, req: dict) -> dict:
 def main() -> None:
     server_id = os.getenv("SERVER_ID", "server-python")
     broker_backend = os.getenv("BROKER_BACKEND", "tcp://broker:5556")
+    pubsub_xsub = os.getenv("PUBSUB_XSUB", "tcp://pubsub-proxy:5557")
     data_file = os.getenv("DATA_FILE", "/data/storage.msgpack")
 
     storage = DiskStorage(data_file)
     context = zmq.Context()
-    socket = context.socket(zmq.REP)
-    socket.connect(broker_backend)
+
+    rep_socket = context.socket(zmq.REP)
+    rep_socket.connect(broker_backend)
+
+    pub_socket = context.socket(zmq.PUB)
+    pub_socket.setsockopt(zmq.LINGER, 0)
+    pub_socket.connect(pubsub_xsub)
+
+    time.sleep(0.5)
 
     print(
-        f"[{now_iso()}] [{server_id}] Conectado ao Broker em {broker_backend} | Persistência: {data_file}",
+        f"[{now_iso()}] [{server_id}] Conectado | Broker REP: {broker_backend} | Proxy PUB: {pubsub_xsub} | Storage: {data_file}",
         flush=True,
     )
 
     def shutdown(signum, frame):
         print(f"[{now_iso()}] [{server_id}] Encerrando servidor...", flush=True)
-        socket.close(0)
+        rep_socket.close(0)
+        pub_socket.close(0)
         context.term()
         sys.exit(0)
 
@@ -181,13 +237,13 @@ def main() -> None:
 
     while True:
         try:
-            raw_req = socket.recv()
+            raw_req = rep_socket.recv()
             req = unpack_message(raw_req)
-            print(format_log(server_id, "RECEBIDO <- CLIENTE", req), flush=True)
+            print(format_log(server_id, "RECEBIDO (REQ) <- CLIENTE", req), flush=True)
 
-            rep = handle_request(server_id, storage, req)
-            print(format_log(server_id, "ENVIADO -> CLIENTE", rep), flush=True)
-            socket.send(pack_message(rep))
+            rep = handle_request(server_id, storage, pub_socket, req)
+            print(format_log(server_id, "ENVIADO (REP) -> CLIENTE", rep), flush=True)
+            rep_socket.send(pack_message(rep))
         except Exception as exc:
             err_rep = {
                 "status": "error",
@@ -196,8 +252,8 @@ def main() -> None:
                 "server_id": server_id,
                 "timestamp": now_iso(),
             }
-            print(format_log(server_id, "ENVIADO (ERRO) -> CLIENTE", err_rep), flush=True)
-            socket.send(pack_message(err_rep))
+            print(format_log(server_id, "ENVIADO (ERRO REP) -> CLIENTE", err_rep), flush=True)
+            rep_socket.send(pack_message(err_rep))
 
 
 if __name__ == "__main__":
