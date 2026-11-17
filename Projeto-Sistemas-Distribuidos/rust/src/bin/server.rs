@@ -1,13 +1,15 @@
 use bbs_rust::{
     format_pubsub_sent_log, format_ref_rep_log, format_ref_req_log, format_request_log,
     format_response_log, is_valid_channel, is_valid_user, now_iso, pack_coordinator_announcement,
-    pack_peer_request, pack_peer_response, pack_pubsub, pack_ref_request, pack_response,
-    record_message_history, unpack_coordinator_announcement, unpack_peer_request,
-    unpack_peer_response, unpack_ref_response, unpack_request, CoordinatorAnnouncement,
-    LogicalClock, PeerRequest, PeerResponse, PhysicalClockSync, PubSubMessage, ReferenceRequest,
-    ReferenceResponse, RequestMessage, ResponseMessage,
+    pack_peer_request, pack_peer_response, pack_pubsub, pack_ref_request, pack_replication_event,
+    pack_response, record_message_history, unpack_coordinator_announcement, unpack_peer_request,
+    unpack_peer_response, unpack_ref_response, unpack_replication_event, unpack_request,
+    CoordinatorAnnouncement, LogicalClock, LoginRecord, PeerRequest, PeerResponse,
+    PhysicalClockSync, PubSubMessage, PublicationRecord, ReferenceRequest, ReferenceResponse,
+    ReplicationEvent, RequestMessage, ResponseMessage,
 };
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 use std::env;
 use std::fs;
 use std::io::{self, Write};
@@ -17,23 +19,6 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct LoginRecord {
-    user: String,
-    timestamp: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct PublicationRecord {
-    channel: String,
-    user: String,
-    content: String,
-    server_id: String,
-    req_timestamp: String,
-    published_at: String,
-    logical_clock: u64,
-}
-
 #[derive(Debug, Default, Serialize, Deserialize)]
 struct StorageState {
     #[serde(default)]
@@ -42,6 +27,8 @@ struct StorageState {
     channels: Vec<String>,
     #[serde(default)]
     publications: Vec<PublicationRecord>,
+    #[serde(default)]
+    applied_ops: Vec<String>,
 }
 
 struct DiskStorage {
@@ -54,7 +41,8 @@ impl DiskStorage {
         if let Some(parent) = Path::new(filepath).parent() {
             let _ = fs::create_dir_all(parent);
         }
-        let state = Self::load(filepath);
+        let mut state = Self::load(filepath);
+        Self::sort_publications(&mut state);
         Self {
             filepath: filepath.to_string(),
             state,
@@ -72,6 +60,16 @@ impl DiskStorage {
         StorageState::default()
     }
 
+    fn sort_publications(state: &mut StorageState) {
+        state.publications.sort_by(|a, b| {
+            a.logical_clock
+                .cmp(&b.logical_clock)
+                .then_with(|| a.published_at.cmp(&b.published_at))
+                .then_with(|| a.server_id.cmp(&b.server_id))
+                .then_with(|| a.op_id.cmp(&b.op_id))
+        });
+    }
+
     fn save(&self) {
         let tmp_path = format!("{}.tmp", self.filepath);
         if let Ok(bytes) = rmp_serde::to_vec_named(&self.state) {
@@ -81,12 +79,29 @@ impl DiskStorage {
         }
     }
 
-    fn record_login(&mut self, user: &str, timestamp: &str) {
+    fn record_login(
+        &mut self,
+        op_id: &str,
+        user: &str,
+        timestamp: &str,
+        server_id: &str,
+        logical_clock: u64,
+    ) -> bool {
+        if !op_id.is_empty() && self.state.applied_ops.iter().any(|o| o == op_id) {
+            return false;
+        }
+        if !op_id.is_empty() {
+            self.state.applied_ops.push(op_id.to_string());
+        }
         self.state.logins.push(LoginRecord {
+            op_id: op_id.to_string(),
             user: user.to_string(),
             timestamp: timestamp.to_string(),
+            server_id: server_id.to_string(),
+            logical_clock,
         });
         self.save();
+        true
     }
 
     fn list_channels(&self) -> Vec<String> {
@@ -95,7 +110,7 @@ impl DiskStorage {
         list
     }
 
-    fn create_channel(&mut self, channel: &str) -> (bool, String) {
+    fn create_channel(&mut self, channel: &str, op_id: &str) -> (bool, String) {
         if channel.is_empty() || !is_valid_channel(channel) {
             return (
                 false,
@@ -103,10 +118,18 @@ impl DiskStorage {
                     .to_string(),
             );
         }
+        if !op_id.is_empty() && self.state.applied_ops.iter().any(|o| o == op_id) {
+            return (false, format!("Operação '{}' já replicada.", op_id));
+        }
+        if !op_id.is_empty() {
+            self.state.applied_ops.push(op_id.to_string());
+        }
         if self.state.channels.iter().any(|c| c == channel) {
+            self.save();
             return (false, format!("Canal '{}' já existe.", channel));
         }
         self.state.channels.push(channel.to_string());
+        self.state.channels.sort();
         self.save();
         (true, format!("Canal '{}' criado com sucesso.", channel))
     }
@@ -114,6 +137,7 @@ impl DiskStorage {
     #[allow(clippy::too_many_arguments)]
     fn record_publication(
         &mut self,
+        op_id: &str,
         channel: &str,
         user: &str,
         content: &str,
@@ -121,11 +145,19 @@ impl DiskStorage {
         req_timestamp: &str,
         published_at: &str,
         logical_clock: u64,
-    ) {
+    ) -> bool {
+        if !op_id.is_empty() && self.state.applied_ops.iter().any(|o| o == op_id) {
+            return false;
+        }
+        if !op_id.is_empty() {
+            self.state.applied_ops.push(op_id.to_string());
+        }
         if !self.state.channels.iter().any(|c| c == channel) && is_valid_channel(channel) {
             self.state.channels.push(channel.to_string());
+            self.state.channels.sort();
         }
         self.state.publications.push(PublicationRecord {
+            op_id: op_id.to_string(),
             channel: channel.to_string(),
             user: user.to_string(),
             content: content.to_string(),
@@ -134,7 +166,165 @@ impl DiskStorage {
             published_at: published_at.to_string(),
             logical_clock,
         });
+        Self::sort_publications(&mut self.state);
         self.save();
+        true
+    }
+
+    fn get_history(&self, channel: Option<&str>, limit: usize) -> (usize, Vec<PublicationRecord>) {
+        let filtered: Vec<PublicationRecord> = match channel {
+            Some(ch) => self
+                .state
+                .publications
+                .iter()
+                .filter(|p| p.channel == ch)
+                .cloned()
+                .collect(),
+            None => self.state.publications.clone(),
+        };
+        let total = filtered.len();
+        let start = total.saturating_sub(limit);
+        (total, filtered[start..].to_vec())
+    }
+
+    fn export_snapshot(
+        &self,
+    ) -> (
+        Vec<LoginRecord>,
+        Vec<String>,
+        Vec<PublicationRecord>,
+        Vec<String>,
+    ) {
+        (
+            self.state.logins.clone(),
+            self.state.channels.clone(),
+            self.state.publications.clone(),
+            self.state.applied_ops.clone(),
+        )
+    }
+
+    fn merge_snapshot(&mut self, rep: &PeerResponse) -> usize {
+        let mut added = 0;
+        let mut applied_set: HashSet<String> = self.state.applied_ops.iter().cloned().collect();
+        let mut pub_keys: HashSet<String> = self
+            .state
+            .publications
+            .iter()
+            .map(|p| {
+                if !p.op_id.is_empty() {
+                    p.op_id.clone()
+                } else {
+                    format!(
+                        "{}:{}:{}:{}",
+                        p.server_id, p.logical_clock, p.published_at, p.content
+                    )
+                }
+            })
+            .collect();
+        let mut login_keys: HashSet<String> = self
+            .state
+            .logins
+            .iter()
+            .map(|l| {
+                if !l.op_id.is_empty() {
+                    l.op_id.clone()
+                } else {
+                    format!("{}:{}:{}", l.server_id, l.user, l.timestamp)
+                }
+            })
+            .collect();
+
+        if let Some(ref chs) = rep.channels {
+            for ch in chs {
+                if !ch.is_empty()
+                    && !self.state.channels.iter().any(|c| c == ch)
+                    && is_valid_channel(ch)
+                {
+                    self.state.channels.push(ch.clone());
+                    added += 1;
+                }
+            }
+        }
+
+        if let Some(ref lgs) = rep.logins {
+            for lg in lgs {
+                let key = if !lg.op_id.is_empty() {
+                    lg.op_id.clone()
+                } else {
+                    format!("{}:{}:{}", lg.server_id, lg.user, lg.timestamp)
+                };
+                if (!lg.op_id.is_empty() && applied_set.contains(&lg.op_id))
+                    || login_keys.contains(&key)
+                {
+                    continue;
+                }
+                if !lg.op_id.is_empty() {
+                    applied_set.insert(lg.op_id.clone());
+                }
+                login_keys.insert(key);
+                self.state.logins.push(lg.clone());
+                added += 1;
+            }
+        }
+
+        if let Some(ref pubs) = rep.publications {
+            for pub_item in pubs {
+                let key = if !pub_item.op_id.is_empty() {
+                    pub_item.op_id.clone()
+                } else {
+                    format!(
+                        "{}:{}:{}:{}",
+                        pub_item.server_id,
+                        pub_item.logical_clock,
+                        pub_item.published_at,
+                        pub_item.content
+                    )
+                };
+                if (!pub_item.op_id.is_empty() && applied_set.contains(&pub_item.op_id))
+                    || pub_keys.contains(&key)
+                {
+                    continue;
+                }
+                if !pub_item.op_id.is_empty() {
+                    applied_set.insert(pub_item.op_id.clone());
+                }
+                pub_keys.insert(key);
+                if !pub_item.channel.is_empty()
+                    && !self.state.channels.iter().any(|c| c == &pub_item.channel)
+                    && is_valid_channel(&pub_item.channel)
+                {
+                    self.state.channels.push(pub_item.channel.clone());
+                }
+                self.state.publications.push(pub_item.clone());
+                added += 1;
+            }
+        }
+
+        if let Some(ref ops) = rep.applied_ops {
+            for op in ops {
+                if !op.is_empty() {
+                    applied_set.insert(op.clone());
+                }
+            }
+        }
+
+        let mut sorted_ops: Vec<String> = applied_set.into_iter().collect();
+        sorted_ops.sort();
+        self.state.applied_ops = sorted_ops;
+        self.state.channels.sort();
+        Self::sort_publications(&mut self.state);
+        if added > 0 {
+            self.save();
+        }
+        added
+    }
+
+    fn counts(&self) -> (usize, usize, usize) {
+        (
+            self.state.logins.len(),
+            self.state.channels.len(),
+            self.state.publications.len(),
+        )
     }
 }
 
@@ -241,9 +431,10 @@ fn query_peer(
     clock: &LogicalClock,
     phys_clock: &PhysicalClockSync,
     mut payload: PeerRequest,
+    timeout_ms: i32,
 ) -> Option<(PeerResponse, f64)> {
     let addr = format!("tcp://{}:{}", peer_name, peer_port);
-    let sock = configure_req_socket(ctx, &addr, 2000);
+    let sock = configure_req_socket(ctx, &addr, timeout_ms);
     payload.from_server = server_id.to_string();
     payload.timestamp = phys_clock.now_iso();
     payload.logical_clock = clock.tick_send();
@@ -282,6 +473,127 @@ fn query_peer(
             None
         }
         Err(_) => None,
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn broadcast_replication_event(
+    pub_socket: &Mutex<zmq::Socket>,
+    server_id: &str,
+    clock: &LogicalClock,
+    phys_clock: &PhysicalClockSync,
+    op_id: &str,
+    op_type: &str,
+    user: Option<String>,
+    channel: Option<String>,
+    content: Option<String>,
+    req_timestamp: Option<String>,
+    event_timestamp: Option<String>,
+) {
+    let repl_clk = clock.tick_send();
+    let ts = event_timestamp.unwrap_or_else(|| phys_clock.now_iso());
+    let ev = ReplicationEvent {
+        topic: "replication".to_string(),
+        op_id: op_id.to_string(),
+        op_type: op_type.to_string(),
+        origin_server: server_id.to_string(),
+        user,
+        channel,
+        content,
+        req_timestamp,
+        timestamp: ts,
+        logical_clock: repl_clk,
+    };
+
+    if let Ok(packed) = pack_replication_event(&ev) {
+        if let Ok(guard) = pub_socket.lock() {
+            let _ = guard.send_multipart([b"replication".as_slice(), &packed], 0);
+        }
+        let sum = format!(
+            "op_id={}, op_type={}, origin={}, logical_clock={}",
+            ev.op_id, ev.op_type, ev.origin_server, ev.logical_clock
+        );
+        let dir = format!(
+            "PUBLICADO (REPL-PUB) -> TÓPICO 'replication' ({}) [clock={}]",
+            ev.op_type, repl_clk
+        );
+        let _ = record_message_history(server_id, &dir, &ev, &sum);
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn sync_state_with_cluster(
+    ctx: &zmq::Context,
+    ref_socket: &mut zmq::Socket,
+    ref_addr: &str,
+    server_id: &str,
+    peer_port: u16,
+    coord_state: &CoordinatorState,
+    storage: &Mutex<DiskStorage>,
+    clock: &LogicalClock,
+    phys_clock: &PhysicalClockSync,
+) {
+    let servers = match call_reference(
+        ctx,
+        ref_socket,
+        ref_addr,
+        server_id,
+        clock,
+        phys_clock,
+        "list",
+    ) {
+        Some(rep) => rep.servers.unwrap_or_default(),
+        None => Vec::new(),
+    };
+
+    let mut peers: Vec<String> = servers
+        .into_iter()
+        .map(|s| s.name)
+        .filter(|name| !name.is_empty() && name != server_id)
+        .collect();
+
+    if let Some(coord) = coord_state.get() {
+        if coord != server_id {
+            if let Some(pos) = peers.iter().position(|p| p == &coord) {
+                peers.remove(pos);
+                peers.insert(0, coord);
+            }
+        }
+    }
+
+    for peer_name in peers {
+        let req = PeerRequest {
+            action: "sync_state".to_string(),
+            from_server: server_id.to_string(),
+            candidate: None,
+            rank: None,
+            timestamp: String::new(),
+            logical_clock: 0,
+        };
+        if let Some((rep, _)) =
+            query_peer(ctx, &peer_name, peer_port, server_id, clock, phys_clock, req, 3000)
+        {
+            if rep.status == "ok" {
+                let (added, counts) = {
+                    let mut guard = storage.lock().unwrap();
+                    let a = guard.merge_snapshot(&rep);
+                    let c = guard.counts();
+                    (a, c)
+                };
+                println!(
+                    "[{}] [{}] [ANTI-ENTROPIA] Estado sincronizado com '{}' | novos_registros={} | total=(logins={}, canais={}, msgs={})",
+                    phys_clock.now_iso(),
+                    server_id,
+                    peer_name,
+                    added,
+                    counts.0,
+                    counts.1,
+                    counts.2
+                );
+                let _ = io::stdout().flush();
+                break;
+            }
+        }
     }
 }
 
@@ -376,7 +688,7 @@ fn run_election(
                 logical_clock: 0,
             };
             if let Some((rep, _)) =
-                query_peer(ctx, &peer.name, peer_port, server_id, clock, phys_clock, req)
+                query_peer(ctx, &peer.name, peer_port, server_id, clock, phys_clock, req, 2000)
             {
                 if rep.status == "ok" {
                     higher_responded = true;
@@ -423,6 +735,7 @@ fn synchronize_clock_berkeley(
     my_rank: u64,
     peer_port: u16,
     coord_state: &CoordinatorState,
+    storage: &Mutex<DiskStorage>,
     clock: &LogicalClock,
     phys_clock: &PhysicalClockSync,
 ) {
@@ -438,6 +751,17 @@ fn synchronize_clock_berkeley(
                 my_rank,
                 peer_port,
                 coord_state,
+                clock,
+                phys_clock,
+            );
+            sync_state_with_cluster(
+                ctx,
+                ref_socket,
+                ref_addr,
+                server_id,
+                peer_port,
+                coord_state,
+                storage,
                 clock,
                 phys_clock,
             );
@@ -473,7 +797,7 @@ fn synchronize_clock_berkeley(
                 logical_clock: 0,
             };
             if let Some((rep, rtt_ms)) =
-                query_peer(ctx, &peer.name, peer_port, server_id, clock, phys_clock, req)
+                query_peer(ctx, &peer.name, peer_port, server_id, clock, phys_clock, req, 2000)
             {
                 if rep.status == "ok" {
                     if let Some(peer_ms) = rep.epoch_ms {
@@ -496,10 +820,20 @@ fn synchronize_clock_berkeley(
             total_offset
         );
         let _ = io::stdout().flush();
+        sync_state_with_cluster(
+            ctx,
+            ref_socket,
+            ref_addr,
+            server_id,
+            peer_port,
+            coord_state,
+            storage,
+            clock,
+            phys_clock,
+        );
         return;
     }
 
-    // Seguidor: requisita hora ao coordenador
     let req = PeerRequest {
         action: "clock".to_string(),
         from_server: server_id.to_string(),
@@ -510,7 +844,7 @@ fn synchronize_clock_berkeley(
     };
 
     if let Some((rep, rtt_ms)) =
-        query_peer(ctx, &coordinator, peer_port, server_id, clock, phys_clock, req)
+        query_peer(ctx, &coordinator, peer_port, server_id, clock, phys_clock, req, 2000)
     {
         if rep.status == "ok" {
             if let Some(coord_ms) = rep.epoch_ms {
@@ -527,6 +861,17 @@ fn synchronize_clock_berkeley(
                     total_offset
                 );
                 let _ = io::stdout().flush();
+                sync_state_with_cluster(
+                    ctx,
+                    ref_socket,
+                    ref_addr,
+                    server_id,
+                    peer_port,
+                    coord_state,
+                    storage,
+                    clock,
+                    phys_clock,
+                );
                 return;
             }
         }
@@ -551,6 +896,17 @@ fn synchronize_clock_berkeley(
         clock,
         phys_clock,
     );
+    sync_state_with_cluster(
+        ctx,
+        ref_socket,
+        ref_addr,
+        server_id,
+        peer_port,
+        coord_state,
+        storage,
+        clock,
+        phys_clock,
+    );
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -559,6 +915,7 @@ fn peer_server_worker(
     peer_port: u16,
     server_id: String,
     my_rank: u64,
+    storage: Arc<Mutex<DiskStorage>>,
     clock: Arc<LogicalClock>,
     phys_clock: Arc<PhysicalClockSync>,
     trigger_election: Arc<AtomicBool>,
@@ -570,7 +927,7 @@ fn peer_server_worker(
         .expect("Falha ao bindar porta PEER");
 
     println!(
-        "[{}] [{}] [PEER-REP] Escutando requisições entre servidores na porta {}",
+        "[{}] [{}] [PEER-REP] Escutando peers (eleição/clock/sync_state) na porta {}",
         phys_clock.now_iso(),
         server_id,
         peer_port
@@ -605,6 +962,10 @@ fn peer_server_worker(
                     rank: Some(my_rank),
                     epoch_ms: None,
                     hora_correta: None,
+                    logins: None,
+                    channels: None,
+                    publications: None,
+                    applied_ops: None,
                     timestamp: phys_clock.now_iso(),
                     logical_clock: clock.tick_send(),
                 }
@@ -617,6 +978,31 @@ fn peer_server_worker(
                     rank: Some(my_rank),
                     epoch_ms: Some(phys_clock.current_epoch_ms()),
                     hora_correta: Some(phys_clock.now_iso()),
+                    logins: None,
+                    channels: None,
+                    publications: None,
+                    applied_ops: None,
+                    timestamp: phys_clock.now_iso(),
+                    logical_clock: clock.tick_send(),
+                }
+            } else if action == "sync_state" {
+                let (logins, channels, publications, applied_ops) = {
+                    let guard = storage.lock().unwrap();
+                    guard.export_snapshot()
+                };
+                let msg = format!("Snapshot enviado ({} mensagens).", publications.len());
+                PeerResponse {
+                    status: "ok".to_string(),
+                    action: "sync_state".to_string(),
+                    message: Some(msg),
+                    server_id: Some(server_id.clone()),
+                    rank: Some(my_rank),
+                    epoch_ms: None,
+                    hora_correta: None,
+                    logins: Some(logins),
+                    channels: Some(channels),
+                    publications: Some(publications),
+                    applied_ops: Some(applied_ops),
                     timestamp: phys_clock.now_iso(),
                     logical_clock: clock.tick_send(),
                 }
@@ -629,6 +1015,10 @@ fn peer_server_worker(
                     rank: Some(my_rank),
                     epoch_ms: None,
                     hora_correta: None,
+                    logins: None,
+                    channels: None,
+                    publications: None,
+                    applied_ops: None,
                     timestamp: phys_clock.now_iso(),
                     logical_clock: clock.tick_send(),
                 }
@@ -641,11 +1031,12 @@ fn peer_server_worker(
     }
 }
 
-fn servers_topic_subscriber(
+fn cluster_topics_subscriber(
     ctx: zmq::Context,
     pubsub_xpub: String,
     server_id: String,
     coord_state: Arc<CoordinatorState>,
+    storage: Arc<Mutex<DiskStorage>>,
     clock: Arc<LogicalClock>,
     phys_clock: Arc<PhysicalClockSync>,
 ) {
@@ -656,9 +1047,11 @@ fn servers_topic_subscriber(
         .expect("Falha ao conectar SUB ao XPUB");
     sub.set_subscribe(b"servers")
         .expect("Falha ao assinar tópico servers");
+    sub.set_subscribe(b"replication")
+        .expect("Falha ao assinar tópico replication");
 
     println!(
-        "[{}] [{}] [SUB-SERVERS] Inscrito no tópico 'servers' em {}",
+        "[{}] [{}] [SUB-CLUSTER] Inscrito nos tópicos 'servers' e 'replication' em {}",
         phys_clock.now_iso(),
         server_id,
         pubsub_xpub
@@ -667,7 +1060,11 @@ fn servers_topic_subscriber(
     loop {
         match sub.recv_multipart(0) {
             Ok(parts) => {
-                if parts.len() >= 2 {
+                if parts.len() < 2 {
+                    continue;
+                }
+                let topic = String::from_utf8_lossy(&parts[0]).to_string();
+                if topic == "servers" {
                     if let Ok(ann) = unpack_coordinator_announcement(&parts[1]) {
                         let updated_clk = clock.update_receive(ann.logical_clock);
                         let elected = if !ann.coordinator.is_empty() {
@@ -696,6 +1093,96 @@ fn servers_topic_subscriber(
                             let _ = io::stdout().flush();
                         }
                     }
+                } else if topic == "replication" {
+                    if let Ok(ev) = unpack_replication_event(&parts[1]) {
+                        let updated_clk = clock.update_receive(ev.logical_clock);
+                        if ev.origin_server.is_empty() || ev.origin_server == server_id {
+                            continue;
+                        }
+                        let ev_clk = if ev.logical_clock > 0 {
+                            ev.logical_clock
+                        } else {
+                            updated_clk
+                        };
+                        let ev_ts = if ev.timestamp.is_empty() {
+                            phys_clock.now_iso()
+                        } else {
+                            ev.timestamp.clone()
+                        };
+
+                        let (applied, counts) = {
+                            let mut guard = storage.lock().unwrap();
+                            let ok = match ev.op_type.as_str() {
+                                "login" => {
+                                    if let Some(ref u) = ev.user {
+                                        let rts = ev.req_timestamp.as_deref().unwrap_or(&ev_ts);
+                                        guard.record_login(
+                                            &ev.op_id,
+                                            u,
+                                            rts,
+                                            &ev.origin_server,
+                                            ev_clk,
+                                        )
+                                    } else {
+                                        false
+                                    }
+                                }
+                                "create_channel" => {
+                                    if let Some(ref ch) = ev.channel {
+                                        guard.create_channel(ch, &ev.op_id).0
+                                    } else {
+                                        false
+                                    }
+                                }
+                                "publish" => {
+                                    if let (Some(ref ch), Some(ref cnt)) =
+                                        (&ev.channel, &ev.content)
+                                    {
+                                        let u = ev.user.as_deref().unwrap_or("anon");
+                                        let rts = ev.req_timestamp.as_deref().unwrap_or(&ev_ts);
+                                        guard.record_publication(
+                                            &ev.op_id,
+                                            ch,
+                                            u,
+                                            cnt,
+                                            &ev.origin_server,
+                                            rts,
+                                            &ev_ts,
+                                            ev_clk,
+                                        )
+                                    } else {
+                                        false
+                                    }
+                                }
+                                _ => false,
+                            };
+                            (ok, guard.counts())
+                        };
+
+                        if applied {
+                            let sum = format!(
+                                "op_id={}, op_type={}, origin={}, total_msgs={}",
+                                ev.op_id, ev.op_type, ev.origin_server, counts.2
+                            );
+                            let dir = format!(
+                                "APLICADO (REPL-SUB) <- '{}' ({}) | total_msgs={} [clock={}]",
+                                ev.origin_server, ev.op_type, counts.2, updated_clk
+                            );
+                            let _ = record_message_history(&server_id, &dir, &ev, &sum);
+                            println!(
+                                "[{}] [{}] [REPL-SUB] Operação '{}' de '{}' aplicada | total=(logins={}, canais={}, msgs={}) [clock={}]",
+                                phys_clock.now_iso(),
+                                server_id,
+                                ev.op_type,
+                                ev.origin_server,
+                                counts.0,
+                                counts.1,
+                                counts.2,
+                                updated_clk
+                            );
+                            let _ = io::stdout().flush();
+                        }
+                    }
                 }
             }
             Err(zmq::Error::EAGAIN) => continue,
@@ -709,7 +1196,7 @@ fn handle_client_request(
     server_id: &str,
     rank: u64,
     coordinator: Option<String>,
-    storage: &mut DiskStorage,
+    storage: &Mutex<DiskStorage>,
     pub_socket: &Mutex<zmq::Socket>,
     clock: &LogicalClock,
     phys_clock: &PhysicalClockSync,
@@ -729,6 +1216,8 @@ fn handle_client_request(
             },
             message: "Timestamp obrigatório ausente na requisição.".to_string(),
             channels: None,
+            total_messages: None,
+            messages: None,
             server_id: server_id.to_string(),
             server_rank: Some(rank),
             coordinator,
@@ -748,6 +1237,8 @@ fn handle_client_request(
                         user
                     ),
                     channels: None,
+                    total_messages: None,
+                    messages: None,
                     server_id: server_id.to_string(),
                     server_rank: Some(rank),
                     coordinator,
@@ -755,12 +1246,32 @@ fn handle_client_request(
                     logical_clock: clock.tick_send(),
                 };
             }
-            storage.record_login(user, req_ts);
+            let op_clock = clock.tick_send();
+            let op_id = format!("{}:{}:{}", server_id, op_clock, req_ts);
+            {
+                let mut guard = storage.lock().unwrap();
+                guard.record_login(&op_id, user, req_ts, server_id, op_clock);
+            }
+            broadcast_replication_event(
+                pub_socket,
+                server_id,
+                clock,
+                phys_clock,
+                &op_id,
+                "login",
+                Some(user.to_string()),
+                None,
+                None,
+                Some(req_ts.to_string()),
+                Some(req_ts.to_string()),
+            );
             ResponseMessage {
                 status: "ok".to_string(),
                 action: "login".to_string(),
                 message: format!("Login realizado com sucesso para '{}'.", user),
                 channels: None,
+                total_messages: None,
+                messages: None,
                 server_id: server_id.to_string(),
                 server_rank: Some(rank),
                 coordinator,
@@ -769,13 +1280,18 @@ fn handle_client_request(
             }
         }
         "list_channels" => {
-            let channels = storage.list_channels();
+            let channels = {
+                let guard = storage.lock().unwrap();
+                guard.list_channels()
+            };
             let count = channels.len();
             ResponseMessage {
                 status: "ok".to_string(),
                 action: "list_channels".to_string(),
                 message: format!("{} canal(is) encontrado(s).", count),
                 channels: Some(channels),
+                total_messages: None,
+                messages: None,
                 server_id: server_id.to_string(),
                 server_rank: Some(rank),
                 coordinator,
@@ -785,12 +1301,34 @@ fn handle_client_request(
         }
         "create_channel" => {
             let channel = req.channel.as_deref().unwrap_or("").trim();
-            let (created, msg) = storage.create_channel(channel);
+            let op_clock = clock.tick_send();
+            let op_id = format!("{}:{}:{}", server_id, op_clock, channel);
+            let (created, msg) = {
+                let mut guard = storage.lock().unwrap();
+                guard.create_channel(channel, &op_id)
+            };
+            if created {
+                broadcast_replication_event(
+                    pub_socket,
+                    server_id,
+                    clock,
+                    phys_clock,
+                    &op_id,
+                    "create_channel",
+                    Some(if user.is_empty() { "anon" } else { user }.to_string()),
+                    Some(channel.to_string()),
+                    None,
+                    Some(req_ts.to_string()),
+                    None,
+                );
+            }
             ResponseMessage {
                 status: if created { "ok" } else { "error" }.to_string(),
                 action: "create_channel".to_string(),
                 message: msg,
                 channels: None,
+                total_messages: None,
+                messages: None,
                 server_id: server_id.to_string(),
                 server_rank: Some(rank),
                 coordinator,
@@ -808,6 +1346,8 @@ fn handle_client_request(
                     action: "publish".to_string(),
                     message: format!("Canal inválido para publicação: '{}'.", channel),
                     channels: None,
+                    total_messages: None,
+                    messages: None,
                     server_id: server_id.to_string(),
                     server_rank: Some(rank),
                     coordinator,
@@ -821,6 +1361,8 @@ fn handle_client_request(
                     action: "publish".to_string(),
                     message: "Conteúdo da publicação não pode ser vazio.".to_string(),
                     channels: None,
+                    total_messages: None,
+                    messages: None,
                     server_id: server_id.to_string(),
                     server_rank: Some(rank),
                     coordinator,
@@ -832,6 +1374,8 @@ fn handle_client_request(
             let pub_ts = phys_clock.now_iso();
             let pub_clock = clock.tick_send();
             let author = if user.is_empty() { "anon" } else { user };
+            let op_id = format!("{}:{}:{}", server_id, pub_clock, pub_ts);
+
             let pub_msg = PubSubMessage {
                 channel: channel.to_string(),
                 user: author.to_string(),
@@ -855,6 +1399,8 @@ fn handle_client_request(
                             action: "publish".to_string(),
                             message: format!("Erro ao publicar no canal '#{}': {}", channel, err),
                             channels: None,
+                            total_messages: None,
+                            messages: None,
                             server_id: server_id.to_string(),
                             server_rank: Some(rank),
                             coordinator,
@@ -871,6 +1417,8 @@ fn handle_client_request(
                         action: "publish".to_string(),
                         message: format!("Erro ao serializar publicação MessagePack: {}", err),
                         channels: None,
+                        total_messages: None,
+                        messages: None,
                         server_id: server_id.to_string(),
                         server_rank: Some(rank),
                         coordinator,
@@ -880,21 +1428,72 @@ fn handle_client_request(
                 }
             }
 
-            storage.record_publication(
-                channel,
-                author,
-                content,
+            {
+                let mut guard = storage.lock().unwrap();
+                guard.record_publication(
+                    &op_id,
+                    channel,
+                    author,
+                    content,
+                    server_id,
+                    req_ts,
+                    &pub_ts,
+                    pub_clock,
+                );
+            }
+
+            broadcast_replication_event(
+                pub_socket,
                 server_id,
-                req_ts,
-                &pub_ts,
-                pub_clock,
+                clock,
+                phys_clock,
+                &op_id,
+                "publish",
+                Some(author.to_string()),
+                Some(channel.to_string()),
+                Some(content.to_string()),
+                Some(req_ts.to_string()),
+                Some(pub_ts),
             );
 
             ResponseMessage {
                 status: "ok".to_string(),
                 action: "publish".to_string(),
-                message: format!("Mensagem publicada no canal '#{}' com sucesso.", channel),
+                message: format!(
+                    "Mensagem publicada e replicada no canal '#{}' com sucesso.",
+                    channel
+                ),
                 channels: None,
+                total_messages: None,
+                messages: None,
+                server_id: server_id.to_string(),
+                server_rank: Some(rank),
+                coordinator,
+                timestamp: phys_clock.now_iso(),
+                logical_clock: clock.tick_send(),
+            }
+        }
+        "get_history" | "history" | "list_messages" => {
+            let ch_filter = req
+                .channel
+                .as_deref()
+                .map(str::trim)
+                .filter(|s| !s.is_empty());
+            let limit = req.limit.unwrap_or(50);
+            let (total, messages) = {
+                let guard = storage.lock().unwrap();
+                guard.get_history(ch_filter, limit)
+            };
+            ResponseMessage {
+                status: "ok".to_string(),
+                action: "get_history".to_string(),
+                message: format!(
+                    "Histórico replicado: {} mensagem(ns) armazenada(s) em '{}'.",
+                    total, server_id
+                ),
+                channels: None,
+                total_messages: Some(total),
+                messages: Some(messages),
                 server_id: server_id.to_string(),
                 server_rank: Some(rank),
                 coordinator,
@@ -911,6 +1510,8 @@ fn handle_client_request(
             },
             message: format!("Ação desconhecida: '{}'.", action),
             channels: None,
+            total_messages: None,
+            messages: None,
             server_id: server_id.to_string(),
             server_rank: Some(rank),
             coordinator,
@@ -944,7 +1545,7 @@ fn main() {
         .unwrap_or(15);
     let data_file = env::var("DATA_FILE").unwrap_or_else(|_| "/data/storage.msgpack".to_string());
 
-    let mut storage = DiskStorage::new(&data_file);
+    let storage = Arc::new(Mutex::new(DiskStorage::new(&data_file)));
     let clock = Arc::new(LogicalClock::new(0));
     let phys_clock = Arc::new(PhysicalClockSync::new());
     let coord_state = Arc::new(CoordinatorState::new());
@@ -953,7 +1554,6 @@ fn main() {
     let ctx = zmq::Context::new();
     let mut ref_socket = configure_req_socket(&ctx, &reference_addr, 5000);
 
-    // 1. Obtém rank no serviço de referência
     let mut rank: Option<u64> = None;
     while rank.is_none() {
         if let Some(rep) = call_reference(
@@ -981,27 +1581,28 @@ fn main() {
         .expect("Falha ao conectar ao XSUB");
     let pub_socket = Arc::new(Mutex::new(raw_pub));
 
-    // Inicia subscriber do tópico 'servers' e listener peer-to-peer (eleição + Berkeley)
     {
         let sub_ctx = ctx.clone();
         let xpub = pubsub_xpub.clone();
         let sid = server_id.clone();
         let cstate = Arc::clone(&coord_state);
+        let st = Arc::clone(&storage);
         let clk = Arc::clone(&clock);
         let pclk = Arc::clone(&phys_clock);
         thread::spawn(move || {
-            servers_topic_subscriber(sub_ctx, xpub, sid, cstate, clk, pclk);
+            cluster_topics_subscriber(sub_ctx, xpub, sid, cstate, st, clk, pclk);
         });
     }
 
     {
         let p_ctx = ctx.clone();
         let sid = server_id.clone();
+        let st = Arc::clone(&storage);
         let clk = Arc::clone(&clock);
         let pclk = Arc::clone(&phys_clock);
         let trig = Arc::clone(&trigger_election);
         thread::spawn(move || {
-            peer_server_worker(p_ctx, peer_port, sid, server_rank, clk, pclk, trig);
+            peer_server_worker(p_ctx, peer_port, sid, server_rank, st, clk, pclk, trig);
         });
     }
 
@@ -1021,6 +1622,18 @@ fn main() {
             &phys_clock,
         );
     }
+
+    sync_state_with_cluster(
+        &ctx,
+        &mut ref_socket,
+        &reference_addr,
+        &server_id,
+        peer_port,
+        &coord_state,
+        &storage,
+        &clock,
+        &phys_clock,
+    );
 
     let rep_socket = ctx.socket(zmq::REP).expect("Falha ao criar socket REP");
     rep_socket.set_rcvtimeo(1000).expect("Falha RCVTIMEO");
@@ -1081,7 +1694,7 @@ fn main() {
                     &server_id,
                     server_rank,
                     coord_state.get(),
-                    &mut storage,
+                    &storage,
                     &pub_socket,
                     &clock,
                     &phys_clock,
@@ -1093,6 +1706,8 @@ fn main() {
                 action: "unknown".to_string(),
                 message: format!("Erro ao decodificar mensagem binária MessagePack: {}", err),
                 channels: None,
+                total_messages: None,
+                messages: None,
                 server_id: server_id.clone(),
                 server_rank: Some(server_rank),
                 coordinator: coord_state.get(),
@@ -1109,7 +1724,6 @@ fn main() {
             exchanged_messages += 1;
         }
 
-        // Heartbeat a cada 10 mensagens de clientes (sem hora física no Reference)
         if client_msg_count > 0 && client_msg_count % heartbeat_every == 0 {
             let _ = call_reference(
                 &ctx,
@@ -1122,7 +1736,6 @@ fn main() {
             );
         }
 
-        // Sincronização de relógio (Algoritmo de Berkeley) a cada 15 mensagens trocadas
         if exchanged_messages >= sync_every {
             exchanged_messages = 0;
             synchronize_clock_berkeley(
@@ -1134,6 +1747,7 @@ fn main() {
                 server_rank,
                 peer_port,
                 &coord_state,
+                &storage,
                 &clock,
                 &phys_clock,
             );
