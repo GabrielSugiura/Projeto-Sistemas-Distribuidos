@@ -1,0 +1,164 @@
+[2026-11-17T14:06:14.761Z] [bot_py_alpha] ENVIADO -> SERVIDOR | action=login, user=bot_py_alpha, timestamp=2026-11-17T14:06:14.761Z
+[2026-11-17T14:06:14.763Z] [server-python-2] RECEBIDO <- CLIENTE | action=login, user=bot_py_alpha, timestamp=2026-11-17T14:06:14.761Z
+[2026-11-17T14:06:14.764Z] [server-python-2] ENVIADO -> CLIENTE | status=ok, action=login, message=Login realizado com sucesso para 'bot_py_alpha'., server_id=server-python-2, timestamp=2026-11-17T14:06:14.764Z
+[2026-11-17T14:06:14.765Z] [bot_py_alpha] RECEBIDO <- SERVIDOR | status=ok, action=login, message=Login realizado com sucesso para 'bot_py_alpha'., server_id=server-python-2, timestamp=2026-11-17T14:06:14.764Z
+[2026-11-17T14:06:15.797Z] [bot_py_beta] ENVIADO -> SERVIDOR | action=login, user=bot_py_beta, timestamp=2026-11-17T14:06:15.797Z
+[2026-11-17T14:06:15.802Z] [server-python-1] RECEBIDO <- CLIENTE | action=login, user=bot_py_beta, timestamp=2026-11-17T14:06:15.797Z
+[2026-11-17T14:06:15.803Z] [server-python-1] ENVIADO -> CLIENTE | status=ok, action=login, message=Login realizado com sucesso para 'bot_py_beta'., server_id=server-python-1, timestamp=2026-11-17T14:06:15.803Z
+[2026-11-17T14:06:15.804Z] [bot_py_beta] RECEBIDO <- SERVIDOR | status=ok, action=login, message=Login realizado com sucesso para 'bot_py_beta'., server_id=server-python-1, timestamp=2026-11-17T14:06:15.803Z
+[2026-11-17T14:06:16.420Z] [bot_rs_gamma] ENVIADO -> SERVIDOR | action=login, user=bot_rs_gamma, timestamp=2026-11-17T14:06:16.420Z
+[2026-11-17T14:06:16.424Z] [server-rust-1] RECEBIDO <- CLIENTE | action=login, user=bot_rs_gamma, timestamp=2026-11-17T14:06:16.420Z
+[2026-11-17T14:06:16.425Z] [server-rust-1] ENVIADO -> CLIENTE | status=ok, action=login, message=Login realizado com sucesso para 'bot_rs_gamma'., server_id=server-rust-1, timestamp=2026-11-17T14:06:16.425Z
+[2026-11-17T14:06:16.425Z] [bot_rs_gamma] RECEBIDO <- SERVIDOR | status=ok, action=login, message=Login realizado com sucesso para 'bot_rs_gamma'., server_id=server-rust-1, timestamp=2026-11-17T14:06:16.425Z
+[2026-11-17T14:06:16.481Z] [bot_rs_delta] ENVIADO -> SERVIDOR | action=login, user=bot_rs_delta, timestamp=2026-11-17T14:06:16.481Z
+[2026-11-17T14:06:16.485Z] [server-rust-2] RECEBIDO <- CLIENTE | action=login, user=bot_rs_delta, timestamp=2026-11-17T14:06:16.481Z
+[2026-11-17T14:06:16.486Z] [server-rust-2] ENVIADO -> CLIENTE | status=ok, action=login, message=Login realizado com sucesso para 'bot_rs_delta'., server_id=server-rust-2, timestamp=2026-11-17T14:06:16.486Z
+[2026-11-17T14:06:16.487Z] [bot_rs_delta] RECEBIDO <- SERVIDOR | status=ok, action=login, message=Login realizado com sucesso para 'bot_rs_delta'., server_id=server-rust-2, timestamp=2026-11-17T14:06:16.486Z
+[2026-11-17T14:06:16.766Z] [bot_py_alpha] ENVIADO -> SERVIDOR | action=list_channels, user=bot_py_alpha, timestamp=2026-11-17T14:06:16.766Z
+[2026-11-17T14:06:16.767Z] [server-python-2] RECEBIDO <- CLIENTE | action=list_channels, user=bot_py_alpha, timestamp=2026-11-17T14:06:16.766Z
+[2026-11-17T14:06:16.767Z] [server-python-2] ENVIADO -> CLIENTE | status=ok, action=list_channels, message=0 canal(is) encontrado(s)., channels=[], server_id=server-python-2, timestamp=2026-11-17T14:06:16.767Z
+[2026-11-17T14:06:16.769Z] [bot_py_alpha] RECEBIDO <- SERVIDOR | status=ok, action=list_channels, message=0 canal(is) encontrado(s)., channels=[], server_id=server-python-2, timestamp=2026-11-17T14:06:16.767Z
+[2026-11-17T14:06:17.805Z] [bot_py_beta] ENVIADO -> SERVIDOR | action=list_channels, user=bot_py_beta, timestamp=2026-11-17T14:06:17.805Z
+[2026-11-17T14:06:17.807Z] [server-python-1] RECEBIDO <- CLIENTE | action=list_channels, user=bot_py_beta, timestamp=2026-11-17T14:06:17.805Z
+[2026-11-17T14:06:17.808Z] [server-python-1] ENVIADO -> CLIENTE | status=ok, action=list_channels, message=0 canal(is) encontrado(s)., channels=[], server_id=server-python-1, timestamp=2026-11-17T14:06:17.808Z
+[2026-11-17T14:06:17.809Z] [bot_py_beta] RECEBIDO <- SERVIDOR | status=ok, action=list_channels, message=0 canal(is) encontrado(s)., channels=[], server_id=server-python-1, timestamp=2026-11-17T14:06:17.808Z
+[2026-11-17T14:06:18.426Z] [bot_rs_gamma] ENVIADO -> SERVIDOR | action=list_channels, user=bot_rs_gamma, timestamp=2026-11-17T14:06:18.426Z
+[2026-11-17T14:06:18.427Z] [server-rust-1] RECEBIDO <- CLIENTE | action=list_channels, user=bot_rs_gamma, timestamp=2026-11-17T14:06:18.426Z
+[2026-11-17T14:06:18.427Z] [server-rust-1] ENVIADO -> CLIENTE | status=ok, action=list_channels, message=0 canal(is) encontrado(s)., server_id=server-rust-1, timestamp=2026-11-17T14:06:18.427Z, channels=[]
+[2026-11-17T14:06:18.428Z] [bot_rs_gamma] RECEBIDO <- SERVIDOR | status=ok, action=list_channels, message=0 canal(is) encontrado(s)., server_id=server-rust-1, timestamp=2026-11-17T14:06:18.427Z, channels=[]
+[2026-11-17T14:06:18.487Z] [bot_rs_delta] ENVIADO -> SERVIDOR | action=list_channels, user=bot_rs_delta, timestamp=2026-11-17T14:06:18.487Z
+[2026-11-17T14:06:18.490Z] [server-rust-2] RECEBIDO <- CLIENTE | action=list_channels, user=bot_rs_delta, timestamp=2026-11-17T14:06:18.487Z
+[2026-11-17T14:06:18.490Z] [server-rust-2] ENVIADO -> CLIENTE | status=ok, action=list_channels, message=0 canal(is) encontrado(s)., server_id=server-rust-2, timestamp=2026-11-17T14:06:18.490Z, channels=[]
+[2026-11-17T14:06:18.492Z] [bot_rs_delta] RECEBIDO <- SERVIDOR | status=ok, action=list_channels, message=0 canal(is) encontrado(s)., server_id=server-rust-2, timestamp=2026-11-17T14:06:18.490Z, channels=[]
+[2026-11-17T14:06:18.770Z] [bot_py_alpha] ENVIADO -> SERVIDOR | action=create_channel, user=bot_py_alpha, channel=geral, timestamp=2026-11-17T14:06:18.770Z
+[2026-11-17T14:06:18.771Z] [server-python-2] RECEBIDO <- CLIENTE | action=create_channel, user=bot_py_alpha, channel=geral, timestamp=2026-11-17T14:06:18.770Z
+[2026-11-17T14:06:18.772Z] [server-python-2] ENVIADO -> CLIENTE | status=ok, action=create_channel, message=Canal 'geral' criado com sucesso., server_id=server-python-2, timestamp=2026-11-17T14:06:18.772Z
+[2026-11-17T14:06:18.774Z] [bot_py_alpha] RECEBIDO <- SERVIDOR | status=ok, action=create_channel, message=Canal 'geral' criado com sucesso., server_id=server-python-2, timestamp=2026-11-17T14:06:18.772Z
+[2026-11-17T14:06:19.810Z] [bot_py_beta] ENVIADO -> SERVIDOR | action=create_channel, user=bot_py_beta, channel=geral, timestamp=2026-11-17T14:06:19.810Z
+[2026-11-17T14:06:19.811Z] [server-python-1] RECEBIDO <- CLIENTE | action=create_channel, user=bot_py_beta, channel=geral, timestamp=2026-11-17T14:06:19.810Z
+[2026-11-17T14:06:19.813Z] [server-python-1] ENVIADO -> CLIENTE | status=ok, action=create_channel, message=Canal 'geral' criado com sucesso., server_id=server-python-1, timestamp=2026-11-17T14:06:19.813Z
+[2026-11-17T14:06:19.814Z] [bot_py_beta] RECEBIDO <- SERVIDOR | status=ok, action=create_channel, message=Canal 'geral' criado com sucesso., server_id=server-python-1, timestamp=2026-11-17T14:06:19.813Z
+[2026-11-17T14:06:20.428Z] [bot_rs_gamma] ENVIADO -> SERVIDOR | action=create_channel, user=bot_rs_gamma, channel=geral, timestamp=2026-11-17T14:06:20.428Z
+[2026-11-17T14:06:20.430Z] [server-rust-1] RECEBIDO <- CLIENTE | action=create_channel, user=bot_rs_gamma, channel=geral, timestamp=2026-11-17T14:06:20.428Z
+[2026-11-17T14:06:20.431Z] [server-rust-1] ENVIADO -> CLIENTE | status=ok, action=create_channel, message=Canal 'geral' criado com sucesso., server_id=server-rust-1, timestamp=2026-11-17T14:06:20.431Z
+[2026-11-17T14:06:20.431Z] [bot_rs_gamma] RECEBIDO <- SERVIDOR | status=ok, action=create_channel, message=Canal 'geral' criado com sucesso., server_id=server-rust-1, timestamp=2026-11-17T14:06:20.431Z
+[2026-11-17T14:06:20.493Z] [bot_rs_delta] ENVIADO -> SERVIDOR | action=create_channel, user=bot_rs_delta, channel=geral, timestamp=2026-11-17T14:06:20.493Z
+[2026-11-17T14:06:20.493Z] [server-rust-2] RECEBIDO <- CLIENTE | action=create_channel, user=bot_rs_delta, channel=geral, timestamp=2026-11-17T14:06:20.493Z
+[2026-11-17T14:06:20.495Z] [server-rust-2] ENVIADO -> CLIENTE | status=ok, action=create_channel, message=Canal 'geral' criado com sucesso., server_id=server-rust-2, timestamp=2026-11-17T14:06:20.495Z
+[2026-11-17T14:06:20.496Z] [bot_rs_delta] RECEBIDO <- SERVIDOR | status=ok, action=create_channel, message=Canal 'geral' criado com sucesso., server_id=server-rust-2, timestamp=2026-11-17T14:06:20.495Z
+[2026-11-17T14:06:20.774Z] [bot_py_alpha] ENVIADO -> SERVIDOR | action=create_channel, user=bot_py_alpha, channel=hacking, timestamp=2026-11-17T14:06:20.774Z
+[2026-11-17T14:06:20.775Z] [server-python-2] RECEBIDO <- CLIENTE | action=create_channel, user=bot_py_alpha, channel=hacking, timestamp=2026-11-17T14:06:20.774Z
+[2026-11-17T14:06:20.776Z] [server-python-2] ENVIADO -> CLIENTE | status=ok, action=create_channel, message=Canal 'hacking' criado com sucesso., server_id=server-python-2, timestamp=2026-11-17T14:06:20.776Z
+[2026-11-17T14:06:20.777Z] [bot_py_alpha] RECEBIDO <- SERVIDOR | status=ok, action=create_channel, message=Canal 'hacking' criado com sucesso., server_id=server-python-2, timestamp=2026-11-17T14:06:20.776Z
+[2026-11-17T14:06:21.815Z] [bot_py_beta] ENVIADO -> SERVIDOR | action=create_channel, user=bot_py_beta, channel=hacking, timestamp=2026-11-17T14:06:21.815Z
+[2026-11-17T14:06:21.816Z] [server-python-1] RECEBIDO <- CLIENTE | action=create_channel, user=bot_py_beta, channel=hacking, timestamp=2026-11-17T14:06:21.815Z
+[2026-11-17T14:06:21.817Z] [server-python-1] ENVIADO -> CLIENTE | status=ok, action=create_channel, message=Canal 'hacking' criado com sucesso., server_id=server-python-1, timestamp=2026-11-17T14:06:21.817Z
+[2026-11-17T14:06:21.819Z] [bot_py_beta] RECEBIDO <- SERVIDOR | status=ok, action=create_channel, message=Canal 'hacking' criado com sucesso., server_id=server-python-1, timestamp=2026-11-17T14:06:21.817Z
+[2026-11-17T14:06:22.432Z] [bot_rs_gamma] ENVIADO -> SERVIDOR | action=create_channel, user=bot_rs_gamma, channel=hacking, timestamp=2026-11-17T14:06:22.432Z
+[2026-11-17T14:06:22.433Z] [server-rust-1] RECEBIDO <- CLIENTE | action=create_channel, user=bot_rs_gamma, channel=hacking, timestamp=2026-11-17T14:06:22.432Z
+[2026-11-17T14:06:22.435Z] [server-rust-1] ENVIADO -> CLIENTE | status=ok, action=create_channel, message=Canal 'hacking' criado com sucesso., server_id=server-rust-1, timestamp=2026-11-17T14:06:22.435Z
+[2026-11-17T14:06:22.437Z] [bot_rs_gamma] RECEBIDO <- SERVIDOR | status=ok, action=create_channel, message=Canal 'hacking' criado com sucesso., server_id=server-rust-1, timestamp=2026-11-17T14:06:22.435Z
+[2026-11-17T14:06:22.497Z] [bot_rs_delta] ENVIADO -> SERVIDOR | action=create_channel, user=bot_rs_delta, channel=hacking, timestamp=2026-11-17T14:06:22.497Z
+[2026-11-17T14:06:22.500Z] [server-rust-2] RECEBIDO <- CLIENTE | action=create_channel, user=bot_rs_delta, channel=hacking, timestamp=2026-11-17T14:06:22.497Z
+[2026-11-17T14:06:22.502Z] [server-rust-2] ENVIADO -> CLIENTE | status=ok, action=create_channel, message=Canal 'hacking' criado com sucesso., server_id=server-rust-2, timestamp=2026-11-17T14:06:22.502Z
+[2026-11-17T14:06:22.504Z] [bot_rs_delta] RECEBIDO <- SERVIDOR | status=ok, action=create_channel, message=Canal 'hacking' criado com sucesso., server_id=server-rust-2, timestamp=2026-11-17T14:06:22.502Z
+[2026-11-17T14:06:22.778Z] [bot_py_alpha] ENVIADO -> SERVIDOR | action=create_channel, user=bot_py_alpha, channel=python-dev, timestamp=2026-11-17T14:06:22.778Z
+[2026-11-17T14:06:22.779Z] [server-python-2] RECEBIDO <- CLIENTE | action=create_channel, user=bot_py_alpha, channel=python-dev, timestamp=2026-11-17T14:06:22.778Z
+[2026-11-17T14:06:22.780Z] [server-python-2] ENVIADO -> CLIENTE | status=ok, action=create_channel, message=Canal 'python-dev' criado com sucesso., server_id=server-python-2, timestamp=2026-11-17T14:06:22.780Z
+[2026-11-17T14:06:22.783Z] [bot_py_alpha] RECEBIDO <- SERVIDOR | status=ok, action=create_channel, message=Canal 'python-dev' criado com sucesso., server_id=server-python-2, timestamp=2026-11-17T14:06:22.780Z
+[2026-11-17T14:06:23.819Z] [bot_py_beta] ENVIADO -> SERVIDOR | action=create_channel, user=bot_py_beta, channel=avisos, timestamp=2026-11-17T14:06:23.819Z
+[2026-11-17T14:06:23.820Z] [server-python-1] RECEBIDO <- CLIENTE | action=create_channel, user=bot_py_beta, channel=avisos, timestamp=2026-11-17T14:06:23.819Z
+[2026-11-17T14:06:23.821Z] [server-python-1] ENVIADO -> CLIENTE | status=ok, action=create_channel, message=Canal 'avisos' criado com sucesso., server_id=server-python-1, timestamp=2026-11-17T14:06:23.821Z
+[2026-11-17T14:06:23.823Z] [bot_py_beta] RECEBIDO <- SERVIDOR | status=ok, action=create_channel, message=Canal 'avisos' criado com sucesso., server_id=server-python-1, timestamp=2026-11-17T14:06:23.821Z
+[2026-11-17T14:06:24.439Z] [bot_rs_gamma] ENVIADO -> SERVIDOR | action=create_channel, user=bot_rs_gamma, channel=rust-lang, timestamp=2026-11-17T14:06:24.439Z
+[2026-11-17T14:06:24.439Z] [server-rust-1] RECEBIDO <- CLIENTE | action=create_channel, user=bot_rs_gamma, channel=rust-lang, timestamp=2026-11-17T14:06:24.439Z
+[2026-11-17T14:06:24.441Z] [server-rust-1] ENVIADO -> CLIENTE | status=ok, action=create_channel, message=Canal 'rust-lang' criado com sucesso., server_id=server-rust-1, timestamp=2026-11-17T14:06:24.441Z
+[2026-11-17T14:06:24.445Z] [bot_rs_gamma] RECEBIDO <- SERVIDOR | status=ok, action=create_channel, message=Canal 'rust-lang' criado com sucesso., server_id=server-rust-1, timestamp=2026-11-17T14:06:24.441Z
+[2026-11-17T14:06:24.504Z] [bot_rs_delta] ENVIADO -> SERVIDOR | action=create_channel, user=bot_rs_delta, channel=sistemas-distribuidos, timestamp=2026-11-17T14:06:24.504Z
+[2026-11-17T14:06:24.505Z] [server-rust-2] RECEBIDO <- CLIENTE | action=create_channel, user=bot_rs_delta, channel=sistemas-distribuidos, timestamp=2026-11-17T14:06:24.504Z
+[2026-11-17T14:06:24.506Z] [server-rust-2] ENVIADO -> CLIENTE | status=ok, action=create_channel, message=Canal 'sistemas-distribuidos' criado com sucesso., server_id=server-rust-2, timestamp=2026-11-17T14:06:24.506Z
+[2026-11-17T14:06:24.507Z] [bot_rs_delta] RECEBIDO <- SERVIDOR | status=ok, action=create_channel, message=Canal 'sistemas-distribuidos' criado com sucesso., server_id=server-rust-2, timestamp=2026-11-17T14:06:24.506Z
+[2026-11-17T14:06:24.788Z] [bot_py_alpha] ENVIADO -> SERVIDOR | action=post_message, user=top_dude, channel=geral, content=you played treedude.exe?, timestamp=2026-11-17T14:06:24.788Z
+[2026-11-17T14:06:24.791Z] [server-python-2] RECEBIDO <- CLIENTE | action=post_message, user=top_dude, channel=geral, content=you played treedude.exe?, timestamp=2026-11-17T14:06:24.788Z
+[2026-11-17T14:06:24.791Z] [server-python-2] ENVIADO -> CLIENTE | status=ok, action=post_message, message=Mensagem de 'top_dude' registrada em '#geral'., server_id=server-python-2, timestamp=2026-11-17T14:06:24.791Z
+[2026-11-17T14:06:24.792Z] [bot_py_alpha] RECEBIDO <- SERVIDOR | status=ok, action=post_message, message=Mensagem de 'top_dude' registrada em '#geral'., server_id=server-python-2, timestamp=2026-11-17T14:06:24.791Z
+[2026-11-17T14:06:25.826Z] [bot_py_beta] ENVIADO -> SERVIDOR | action=post_message, user=top_dude, channel=geral, content=post your scores, timestamp=2026-11-17T14:06:25.826Z
+[2026-11-17T14:06:25.827Z] [server-python-1] RECEBIDO <- CLIENTE | action=post_message, user=top_dude, channel=geral, content=post your scores, timestamp=2026-11-17T14:06:25.826Z
+[2026-11-17T14:06:25.828Z] [server-python-1] ENVIADO -> CLIENTE | status=ok, action=post_message, message=Mensagem de 'top_dude' registrada em '#geral'., server_id=server-python-1, timestamp=2026-11-17T14:06:25.828Z
+[2026-11-17T14:06:25.828Z] [bot_py_beta] RECEBIDO <- SERVIDOR | status=ok, action=post_message, message=Mensagem de 'top_dude' registrada em '#geral'., server_id=server-python-1, timestamp=2026-11-17T14:06:25.828Z
+[2026-11-17T14:06:26.445Z] [bot_rs_gamma] ENVIADO -> SERVIDOR | action=post_message, user=top_dude, channel=geral, content=359, timestamp=2026-11-17T14:06:26.445Z
+[2026-11-17T14:06:26.446Z] [server-rust-1] RECEBIDO <- CLIENTE | action=post_message, user=top_dude, channel=geral, content=359, timestamp=2026-11-17T14:06:26.445Z
+[2026-11-17T14:06:26.447Z] [server-rust-1] ENVIADO -> CLIENTE | status=ok, action=post_message, message=Mensagem de 'top_dude' registrada em '#geral'., server_id=server-rust-1, timestamp=2026-11-17T14:06:26.447Z
+[2026-11-17T14:06:26.448Z] [bot_rs_gamma] RECEBIDO <- SERVIDOR | status=ok, action=post_message, message=Mensagem de 'top_dude' registrada em '#geral'., server_id=server-rust-1, timestamp=2026-11-17T14:06:26.447Z
+[2026-11-17T14:06:26.508Z] [bot_rs_delta] ENVIADO -> SERVIDOR | action=post_message, user=rockr, channel=geral, content=230, timestamp=2026-11-17T14:06:26.508Z
+[2026-11-17T14:06:26.511Z] [server-rust-2] RECEBIDO <- CLIENTE | action=post_message, user=rockr, channel=geral, content=230, timestamp=2026-11-17T14:06:26.508Z
+[2026-11-17T14:06:26.512Z] [server-rust-2] ENVIADO -> CLIENTE | status=ok, action=post_message, message=Mensagem de 'rockr' registrada em '#geral'., server_id=server-rust-2, timestamp=2026-11-17T14:06:26.512Z
+[2026-11-17T14:06:26.514Z] [bot_rs_delta] RECEBIDO <- SERVIDOR | status=ok, action=post_message, message=Mensagem de 'rockr' registrada em '#geral'., server_id=server-rust-2, timestamp=2026-11-17T14:06:26.512Z
+[2026-11-17T14:06:26.793Z] [bot_py_alpha] ENVIADO -> SERVIDOR | action=post_message, user=adam, channel=geral, content=230, timestamp=2026-11-17T14:06:26.793Z
+[2026-11-17T14:06:26.793Z] [server-python-2] RECEBIDO <- CLIENTE | action=post_message, user=adam, channel=geral, content=230, timestamp=2026-11-17T14:06:26.793Z
+[2026-11-17T14:06:26.795Z] [server-python-2] ENVIADO -> CLIENTE | status=ok, action=post_message, message=Mensagem de 'adam' registrada em '#geral'., server_id=server-python-2, timestamp=2026-11-17T14:06:26.795Z
+[2026-11-17T14:06:26.796Z] [bot_py_alpha] RECEBIDO <- SERVIDOR | status=ok, action=post_message, message=Mensagem de 'adam' registrada em '#geral'., server_id=server-python-2, timestamp=2026-11-17T14:06:26.795Z
+[2026-11-17T14:06:27.829Z] [bot_py_beta] ENVIADO -> SERVIDOR | action=post_message, user=d00bz, channel=geral, content=345, damn, timestamp=2026-11-17T14:06:27.829Z
+[2026-11-17T14:06:27.830Z] [server-python-1] RECEBIDO <- CLIENTE | action=post_message, user=d00bz, channel=geral, content=345, damn, timestamp=2026-11-17T14:06:27.829Z
+[2026-11-17T14:06:27.831Z] [server-python-1] ENVIADO -> CLIENTE | status=ok, action=post_message, message=Mensagem de 'd00bz' registrada em '#geral'., server_id=server-python-1, timestamp=2026-11-17T14:06:27.831Z
+[2026-11-17T14:06:27.832Z] [bot_py_beta] RECEBIDO <- SERVIDOR | status=ok, action=post_message, message=Mensagem de 'd00bz' registrada em '#geral'., server_id=server-python-1, timestamp=2026-11-17T14:06:27.831Z
+[2026-11-17T14:06:28.448Z] [bot_rs_gamma] ENVIADO -> SERVIDOR | action=post_message, user=lokoz, channel=geral, content=346, timestamp=2026-11-17T14:06:28.448Z
+[2026-11-17T14:06:28.450Z] [server-rust-1] RECEBIDO <- CLIENTE | action=post_message, user=lokoz, channel=geral, content=346, timestamp=2026-11-17T14:06:28.448Z
+[2026-11-17T14:06:28.450Z] [server-rust-1] ENVIADO -> CLIENTE | status=ok, action=post_message, message=Mensagem de 'lokoz' registrada em '#geral'., server_id=server-rust-1, timestamp=2026-11-17T14:06:28.450Z
+[2026-11-17T14:06:28.452Z] [bot_rs_gamma] RECEBIDO <- SERVIDOR | status=ok, action=post_message, message=Mensagem de 'lokoz' registrada em '#geral'., server_id=server-rust-1, timestamp=2026-11-17T14:06:28.450Z
+[2026-11-17T14:06:28.514Z] [bot_rs_delta] ENVIADO -> SERVIDOR | action=login, user=tree_hacker, timestamp=2026-11-17T14:06:28.514Z
+[2026-11-17T14:06:28.518Z] [server-rust-2] RECEBIDO <- CLIENTE | action=login, user=tree_hacker, timestamp=2026-11-17T14:06:28.514Z
+[2026-11-17T14:06:28.518Z] [server-rust-2] ENVIADO -> CLIENTE | status=ok, action=login, message=Login realizado com sucesso para 'tree_hacker'., server_id=server-rust-2, timestamp=2026-11-17T14:06:28.518Z
+[2026-11-17T14:06:28.518Z] [bot_rs_delta] RECEBIDO <- SERVIDOR | status=ok, action=login, message=Login realizado com sucesso para 'tree_hacker'., server_id=server-rust-2, timestamp=2026-11-17T14:06:28.518Z
+[2026-11-17T14:06:28.796Z] [bot_py_alpha] ENVIADO -> SERVIDOR | action=post_message, user=adrian, channel=geral, content=321, timestamp=2026-11-17T14:06:28.796Z
+[2026-11-17T14:06:28.799Z] [server-python-2] RECEBIDO <- CLIENTE | action=post_message, user=adrian, channel=geral, content=321, timestamp=2026-11-17T14:06:28.796Z
+[2026-11-17T14:06:28.801Z] [server-python-2] ENVIADO -> CLIENTE | status=ok, action=post_message, message=Mensagem de 'adrian' registrada em '#geral'., server_id=server-python-2, timestamp=2026-11-17T14:06:28.801Z
+[2026-11-17T14:06:28.802Z] [bot_py_alpha] RECEBIDO <- SERVIDOR | status=ok, action=post_message, message=Mensagem de 'adrian' registrada em '#geral'., server_id=server-python-2, timestamp=2026-11-17T14:06:28.801Z
+[2026-11-17T14:06:29.832Z] [bot_py_beta] ENVIADO -> SERVIDOR | action=post_message, user=pixel, channel=geral, content=280, timestamp=2026-11-17T14:06:29.832Z
+[2026-11-17T14:06:29.835Z] [server-python-1] RECEBIDO <- CLIENTE | action=post_message, user=pixel, channel=geral, content=280, timestamp=2026-11-17T14:06:29.832Z
+[2026-11-17T14:06:29.836Z] [server-python-1] ENVIADO -> CLIENTE | status=ok, action=post_message, message=Mensagem de 'pixel' registrada em '#geral'., server_id=server-python-1, timestamp=2026-11-17T14:06:29.836Z
+[2026-11-17T14:06:29.838Z] [bot_py_beta] RECEBIDO <- SERVIDOR | status=ok, action=post_message, message=Mensagem de 'pixel' registrada em '#geral'., server_id=server-python-1, timestamp=2026-11-17T14:06:29.836Z
+[2026-11-17T14:06:30.453Z] [bot_rs_gamma] ENVIADO -> SERVIDOR | action=post_message, user=tree_hacker, channel=geral, content=oh, you're posting treedude scores?, timestamp=2026-11-17T14:06:30.453Z
+[2026-11-17T14:06:30.455Z] [server-rust-1] RECEBIDO <- CLIENTE | action=post_message, user=tree_hacker, channel=geral, content=oh, you're posting treedude scores?, timestamp=2026-11-17T14:06:30.453Z
+[2026-11-17T14:06:30.456Z] [server-rust-1] ENVIADO -> CLIENTE | status=ok, action=post_message, message=Mensagem de 'tree_hacker' registrada em '#geral'., server_id=server-rust-1, timestamp=2026-11-17T14:06:30.456Z
+[2026-11-17T14:06:30.457Z] [bot_rs_gamma] RECEBIDO <- SERVIDOR | status=ok, action=post_message, message=Mensagem de 'tree_hacker' registrada em '#geral'., server_id=server-rust-1, timestamp=2026-11-17T14:06:30.456Z
+[2026-11-17T14:06:30.519Z] [bot_rs_delta] ENVIADO -> SERVIDOR | action=post_message, user=tree_hacker, channel=geral, content=404, timestamp=2026-11-17T14:06:30.519Z
+[2026-11-17T14:06:30.520Z] [server-rust-2] RECEBIDO <- CLIENTE | action=post_message, user=tree_hacker, channel=geral, content=404, timestamp=2026-11-17T14:06:30.519Z
+[2026-11-17T14:06:30.521Z] [server-rust-2] ENVIADO -> CLIENTE | status=ok, action=post_message, message=Mensagem de 'tree_hacker' registrada em '#geral'., server_id=server-rust-2, timestamp=2026-11-17T14:06:30.521Z
+[2026-11-17T14:06:30.521Z] [bot_rs_delta] RECEBIDO <- SERVIDOR | status=ok, action=post_message, message=Mensagem de 'tree_hacker' registrada em '#geral'., server_id=server-rust-2, timestamp=2026-11-17T14:06:30.521Z
+[2026-11-17T14:06:30.803Z] [bot_py_alpha] ENVIADO -> SERVIDOR | action=post_message, user=top_dude, channel=geral, content=uuuuuu, timestamp=2026-11-17T14:06:30.802Z
+[2026-11-17T14:06:30.804Z] [server-python-2] RECEBIDO <- CLIENTE | action=post_message, user=top_dude, channel=geral, content=uuuuuu, timestamp=2026-11-17T14:06:30.802Z
+[2026-11-17T14:06:30.805Z] [server-python-2] ENVIADO -> CLIENTE | status=ok, action=post_message, message=Mensagem de 'top_dude' registrada em '#geral'., server_id=server-python-2, timestamp=2026-11-17T14:06:30.805Z
+[2026-11-17T14:06:30.806Z] [bot_py_alpha] RECEBIDO <- SERVIDOR | status=ok, action=post_message, message=Mensagem de 'top_dude' registrada em '#geral'., server_id=server-python-2, timestamp=2026-11-17T14:06:30.805Z
+[2026-11-17T14:06:31.840Z] [bot_py_beta] ENVIADO -> SERVIDOR | action=post_message, user=tree_hacker, channel=geral, content=yeah, i can't stop playing the game it's awesome, timestamp=2026-11-17T14:06:31.840Z
+[2026-11-17T14:06:31.841Z] [server-python-1] RECEBIDO <- CLIENTE | action=post_message, user=tree_hacker, channel=geral, content=yeah, i can't stop playing the game it's awesome, timestamp=2026-11-17T14:06:31.840Z
+[2026-11-17T14:06:31.842Z] [server-python-1] ENVIADO -> CLIENTE | status=ok, action=post_message, message=Mensagem de 'tree_hacker' registrada em '#geral'., server_id=server-python-1, timestamp=2026-11-17T14:06:31.842Z
+[2026-11-17T14:06:31.843Z] [bot_py_beta] RECEBIDO <- SERVIDOR | status=ok, action=post_message, message=Mensagem de 'tree_hacker' registrada em '#geral'., server_id=server-python-1, timestamp=2026-11-17T14:06:31.842Z
+[2026-11-17T14:06:32.458Z] [bot_rs_gamma] ENVIADO -> SERVIDOR | action=post_message, user=top_dude, channel=geral, content=me too. CHOP CHOP CHOP CHOP CHOP CHOP CHOP CHOP CHOP CHOP, timestamp=2026-11-17T14:06:32.458Z
+[2026-11-17T14:06:32.459Z] [server-rust-1] RECEBIDO <- CLIENTE | action=post_message, user=top_dude, channel=geral, content=me too. CHOP CHOP CHOP CHOP CHOP CHOP CHOP CHOP CHOP CHOP, timestamp=2026-11-17T14:06:32.458Z
+[2026-11-17T14:06:32.460Z] [server-rust-1] ENVIADO -> CLIENTE | status=ok, action=post_message, message=Mensagem de 'top_dude' registrada em '#geral'., server_id=server-rust-1, timestamp=2026-11-17T14:06:32.460Z
+[2026-11-17T14:06:32.461Z] [bot_rs_gamma] RECEBIDO <- SERVIDOR | status=ok, action=post_message, message=Mensagem de 'top_dude' registrada em '#geral'., server_id=server-rust-1, timestamp=2026-11-17T14:06:32.460Z
+[2026-11-17T14:06:32.522Z] [bot_rs_delta] ENVIADO -> SERVIDOR | action=post_message, user=tree_hacker, channel=geral, content=i keep repeating this in my head!, timestamp=2026-11-17T14:06:32.522Z
+[2026-11-17T14:06:32.523Z] [server-rust-2] RECEBIDO <- CLIENTE | action=post_message, user=tree_hacker, channel=geral, content=i keep repeating this in my head!, timestamp=2026-11-17T14:06:32.522Z
+[2026-11-17T14:06:32.524Z] [server-rust-2] ENVIADO -> CLIENTE | status=ok, action=post_message, message=Mensagem de 'tree_hacker' registrada em '#geral'., server_id=server-rust-2, timestamp=2026-11-17T14:06:32.524Z
+[2026-11-17T14:06:32.525Z] [bot_rs_delta] RECEBIDO <- SERVIDOR | status=ok, action=post_message, message=Mensagem de 'tree_hacker' registrada em '#geral'., server_id=server-rust-2, timestamp=2026-11-17T14:06:32.524Z
+[2026-11-17T14:06:32.806Z] [bot_py_alpha] ENVIADO -> SERVIDOR | action=post_message, user=MOD, channel=geral, content=You still playing that game? It's like a month old already. Not worth your time. Maybe you want to try something stronger?, timestamp=2026-11-17T14:06:32.806Z
+[2026-11-17T14:06:32.808Z] [server-python-2] RECEBIDO <- CLIENTE | action=post_message, user=MOD, channel=geral, content=You still playing that game? It's like a month old already. Not worth your time. Maybe you want to try something stronger?, timestamp=2026-11-17T14:06:32.806Z
+[2026-11-17T14:06:32.810Z] [server-python-2] ENVIADO -> CLIENTE | status=ok, action=post_message, message=Mensagem de 'MOD' registrada em '#geral'., server_id=server-python-2, timestamp=2026-11-17T14:06:32.810Z
+[2026-11-17T14:06:32.811Z] [bot_py_alpha] RECEBIDO <- SERVIDOR | status=ok, action=post_message, message=Mensagem de 'MOD' registrada em '#geral'., server_id=server-python-2, timestamp=2026-11-17T14:06:32.810Z
+[2026-11-17T14:06:33.844Z] [bot_py_beta] ENVIADO -> SERVIDOR | action=post_message, user=tree_hacker, channel=geral, content=I like simple games., timestamp=2026-11-17T14:06:33.844Z
+[2026-11-17T14:06:33.846Z] [server-python-1] RECEBIDO <- CLIENTE | action=post_message, user=tree_hacker, channel=geral, content=I like simple games., timestamp=2026-11-17T14:06:33.844Z
+[2026-11-17T14:06:33.846Z] [server-python-1] ENVIADO -> CLIENTE | status=ok, action=post_message, message=Mensagem de 'tree_hacker' registrada em '#geral'., server_id=server-python-1, timestamp=2026-11-17T14:06:33.846Z
+[2026-11-17T14:06:33.848Z] [bot_py_beta] RECEBIDO <- SERVIDOR | status=ok, action=post_message, message=Mensagem de 'tree_hacker' registrada em '#geral'., server_id=server-python-1, timestamp=2026-11-17T14:06:33.846Z
+[2026-11-17T14:06:34.462Z] [bot_rs_gamma] ENVIADO -> SERVIDOR | action=post_message, user=MOD, channel=geral, content=well, timestamp=2026-11-17T14:06:34.462Z
+[2026-11-17T14:06:34.463Z] [server-rust-1] RECEBIDO <- CLIENTE | action=post_message, user=MOD, channel=geral, content=well, timestamp=2026-11-17T14:06:34.462Z
+[2026-11-17T14:06:34.464Z] [server-rust-1] ENVIADO -> CLIENTE | status=ok, action=post_message, message=Mensagem de 'MOD' registrada em '#geral'., server_id=server-rust-1, timestamp=2026-11-17T14:06:34.464Z
+[2026-11-17T14:06:34.466Z] [bot_rs_gamma] RECEBIDO <- SERVIDOR | status=ok, action=post_message, message=Mensagem de 'MOD' registrada em '#geral'., server_id=server-rust-1, timestamp=2026-11-17T14:06:34.464Z
+[2026-11-17T14:06:34.525Z] [bot_rs_delta] ENVIADO -> SERVIDOR | action=post_message, user=MOD, channel=geral, content=What about you top_dude?, timestamp=2026-11-17T14:06:34.525Z
+[2026-11-17T14:06:34.526Z] [server-rust-2] RECEBIDO <- CLIENTE | action=post_message, user=MOD, channel=geral, content=What about you top_dude?, timestamp=2026-11-17T14:06:34.525Z
+[2026-11-17T14:06:34.527Z] [server-rust-2] ENVIADO -> CLIENTE | status=ok, action=post_message, message=Mensagem de 'MOD' registrada em '#geral'., server_id=server-rust-2, timestamp=2026-11-17T14:06:34.527Z
+[2026-11-17T14:06:34.527Z] [bot_rs_delta] RECEBIDO <- SERVIDOR | status=ok, action=post_message, message=Mensagem de 'MOD' registrada em '#geral'., server_id=server-rust-2, timestamp=2026-11-17T14:06:34.527Z
+[2026-11-17T14:06:34.813Z] [bot_py_alpha] ENVIADO -> SERVIDOR | action=post_message, user=top_dude, channel=geral, content=You have my attention. treedude gets so old so fast. There's no plot, no reason for anything. just hacking trees., timestamp=2026-11-17T14:06:34.812Z
+[2026-11-17T14:06:34.815Z] [server-python-2] RECEBIDO <- CLIENTE | action=post_message, user=top_dude, channel=geral, content=You have my attention. treedude gets so old so fast. There's no plot, no reason for anything. just hacking trees., timestamp=2026-11-17T14:06:34.812Z
+[2026-11-17T14:06:34.815Z] [server-python-2] ENVIADO -> CLIENTE | status=ok, action=post_message, message=Mensagem de 'top_dude' registrada em '#geral'., server_id=server-python-2, timestamp=2026-11-17T14:06:34.815Z
+[2026-11-17T14:06:34.816Z] [bot_py_alpha] RECEBIDO <- SERVIDOR | status=ok, action=post_message, message=Mensagem de 'top_dude' registrada em '#geral'., server_id=server-python-2, timestamp=2026-11-17T14:06:34.815Z
