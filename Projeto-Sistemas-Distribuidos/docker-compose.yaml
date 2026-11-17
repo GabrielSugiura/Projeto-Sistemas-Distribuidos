@@ -1,0 +1,276 @@
+services:
+  broker:
+    build:
+      context: ./python
+      dockerfile: Dockerfile
+    container_name: bbs-broker
+    command: ["python", "-u", "broker.py"]
+    environment:
+      - FRONTEND_ADDR=tcp://*:5555
+      - BACKEND_ADDR=tcp://*:5556
+    networks:
+      - bbs-net
+
+  pubsub-proxy:
+    build:
+      context: ./python
+      dockerfile: Dockerfile
+    container_name: bbs-pubsub-proxy
+    command: ["python", "-u", "pubsub_proxy.py"]
+    environment:
+      - XSUB_ADDR=tcp://*:5557
+      - XPUB_ADDR=tcp://*:5558
+    ports:
+      - "5557:5557"
+      - "5558:5558"
+    networks:
+      - bbs-net
+
+  reference:
+    build:
+      context: ./python
+      dockerfile: Dockerfile
+    container_name: bbs-reference
+    command: ["python", "-u", "reference.py"]
+    environment:
+      - REFERENCE_BIND=tcp://*:5559
+      - HEARTBEAT_TIMEOUT=45.0
+      - DATA_FILE=/data/reference.msgpack
+      - MESSAGE_LOG_FILE=/logs/reference.jsonl
+    volumes:
+      - ./dados/reference:/data
+      - ./dados/historico_mensagens:/logs
+    networks:
+      - bbs-net
+
+  # ================= SERVIDORES PYTHON (2 instâncias) =================
+  server-python-1:
+    build:
+      context: ./python
+      dockerfile: Dockerfile
+    container_name: server-python-1
+    command: ["python", "-u", "server.py"]
+    environment:
+      - SERVER_ID=server-python-1
+      - BROKER_BACKEND=tcp://broker:5556
+      - PUBSUB_XSUB=tcp://pubsub-proxy:5557
+      - PUBSUB_XPUB=tcp://pubsub-proxy:5558
+      - REFERENCE_ADDR=tcp://reference:5559
+      - PEER_PORT=5560
+      - HEARTBEAT_EVERY=10
+      - SYNC_EVERY=15
+      - DATA_FILE=/data/storage.msgpack
+      - MESSAGE_LOG_FILE=/logs/server-python-1.jsonl
+    volumes:
+      - ./dados/server-python-1:/data
+      - ./dados/historico_mensagens:/logs
+    depends_on:
+      - broker
+      - pubsub-proxy
+      - reference
+    networks:
+      - bbs-net
+
+  server-python-2:
+    build:
+      context: ./python
+      dockerfile: Dockerfile
+    container_name: server-python-2
+    command: ["python", "-u", "server.py"]
+    environment:
+      - SERVER_ID=server-python-2
+      - BROKER_BACKEND=tcp://broker:5556
+      - PUBSUB_XSUB=tcp://pubsub-proxy:5557
+      - PUBSUB_XPUB=tcp://pubsub-proxy:5558
+      - REFERENCE_ADDR=tcp://reference:5559
+      - PEER_PORT=5560
+      - HEARTBEAT_EVERY=10
+      - SYNC_EVERY=15
+      - DATA_FILE=/data/storage.msgpack
+      - MESSAGE_LOG_FILE=/logs/server-python-2.jsonl
+    volumes:
+      - ./dados/server-python-2:/data
+      - ./dados/historico_mensagens:/logs
+    depends_on:
+      - broker
+      - pubsub-proxy
+      - reference
+    networks:
+      - bbs-net
+
+  # ================= SERVIDORES RUST (2 instâncias) =================
+  server-rust-1:
+    build:
+      context: ./rust
+      dockerfile: Dockerfile
+    container_name: server-rust-1
+    command: ["/app/bin/server"]
+    environment:
+      - SERVER_ID=server-rust-1
+      - BROKER_BACKEND=tcp://broker:5556
+      - PUBSUB_XSUB=tcp://pubsub-proxy:5557
+      - PUBSUB_XPUB=tcp://pubsub-proxy:5558
+      - REFERENCE_ADDR=tcp://reference:5559
+      - PEER_PORT=5560
+      - HEARTBEAT_EVERY=10
+      - SYNC_EVERY=15
+      - DATA_FILE=/data/storage.msgpack
+      - MESSAGE_LOG_FILE=/logs/server-rust-1.jsonl
+    volumes:
+      - ./dados/server-rust-1:/data
+      - ./dados/historico_mensagens:/logs
+    depends_on:
+      - broker
+      - pubsub-proxy
+      - reference
+    networks:
+      - bbs-net
+
+  server-rust-2:
+    build:
+      context: ./rust
+      dockerfile: Dockerfile
+    container_name: server-rust-2
+    command: ["/app/bin/server"]
+    environment:
+      - SERVER_ID=server-rust-2
+      - BROKER_BACKEND=tcp://broker:5556
+      - PUBSUB_XSUB=tcp://pubsub-proxy:5557
+      - PUBSUB_XPUB=tcp://pubsub-proxy:5558
+      - REFERENCE_ADDR=tcp://reference:5559
+      - PEER_PORT=5560
+      - HEARTBEAT_EVERY=10
+      - SYNC_EVERY=15
+      - DATA_FILE=/data/storage.msgpack
+      - MESSAGE_LOG_FILE=/logs/server-rust-2.jsonl
+    volumes:
+      - ./dados/server-rust-2:/data
+      - ./dados/historico_mensagens:/logs
+    depends_on:
+      - broker
+      - pubsub-proxy
+      - reference
+    networks:
+      - bbs-net
+
+  # ================= CLIENTES / BOTS PYTHON (2 instâncias) =================
+  client-python-1:
+    build:
+      context: ./python
+      dockerfile: Dockerfile
+    container_name: client-python-1
+    command: ["python", "-u", "client.py"]
+    environment:
+      - BOT_NAME=bot_py_alpha
+      - BROKER_FRONTEND=tcp://broker:5555
+      - PUBSUB_XPUB=tcp://pubsub-proxy:5558
+      - CANDIDATE_CHANNELS=geral,hacking,python-dev,sistemas-distribuidos,avisos,random,arquitetura
+      - MESSAGES_FILE=/app/messages.txt
+      - MESSAGE_INTERVAL=1.0
+      - STARTUP_DELAY=3.0
+      - MESSAGE_LOG_FILE=/logs/bot_py_alpha.jsonl
+    volumes:
+      - ./messages.txt:/app/messages.txt:ro
+      - ./dados/historico_mensagens:/logs
+    depends_on:
+      - broker
+      - pubsub-proxy
+      - reference
+      - server-python-1
+      - server-python-2
+      - server-rust-1
+      - server-rust-2
+    networks:
+      - bbs-net
+
+  client-python-2:
+    build:
+      context: ./python
+      dockerfile: Dockerfile
+    container_name: client-python-2
+    command: ["python", "-u", "client.py"]
+    environment:
+      - BOT_NAME=bot_py_beta
+      - BROKER_FRONTEND=tcp://broker:5555
+      - PUBSUB_XPUB=tcp://pubsub-proxy:5558
+      - CANDIDATE_CHANNELS=geral,hacking,python-dev,sistemas-distribuidos,avisos,random,arquitetura
+      - MESSAGES_FILE=/app/messages.txt
+      - MESSAGE_INTERVAL=1.0
+      - STARTUP_DELAY=3.5
+      - MESSAGE_LOG_FILE=/logs/bot_py_beta.jsonl
+    volumes:
+      - ./messages.txt:/app/messages.txt:ro
+      - ./dados/historico_mensagens:/logs
+    depends_on:
+      - broker
+      - pubsub-proxy
+      - reference
+      - server-python-1
+      - server-python-2
+      - server-rust-1
+      - server-rust-2
+    networks:
+      - bbs-net
+
+  # ================= CLIENTES / BOTS RUST (2 instâncias) =================
+  client-rust-1:
+    build:
+      context: ./rust
+      dockerfile: Dockerfile
+    container_name: client-rust-1
+    command: ["/app/bin/client"]
+    environment:
+      - BOT_NAME=bot_rs_gamma
+      - BROKER_FRONTEND=tcp://broker:5555
+      - PUBSUB_XPUB=tcp://pubsub-proxy:5558
+      - CANDIDATE_CHANNELS=geral,hacking,rust-lang,zeromq-libzmq,sistemas-distribuidos,avisos,random
+      - MESSAGES_FILE=/app/messages.txt
+      - MESSAGE_INTERVAL=1.0
+      - STARTUP_DELAY=4.0
+      - MESSAGE_LOG_FILE=/logs/bot_rs_gamma.jsonl
+    volumes:
+      - ./messages.txt:/app/messages.txt:ro
+      - ./dados/historico_mensagens:/logs
+    depends_on:
+      - broker
+      - pubsub-proxy
+      - reference
+      - server-python-1
+      - server-python-2
+      - server-rust-1
+      - server-rust-2
+    networks:
+      - bbs-net
+
+  client-rust-2:
+    build:
+      context: ./rust
+      dockerfile: Dockerfile
+    container_name: client-rust-2
+    command: ["/app/bin/client"]
+    environment:
+      - BOT_NAME=bot_rs_delta
+      - BROKER_FRONTEND=tcp://broker:5555
+      - PUBSUB_XPUB=tcp://pubsub-proxy:5558
+      - CANDIDATE_CHANNELS=geral,hacking,rust-lang,zeromq-libzmq,sistemas-distribuidos,avisos,random
+      - MESSAGES_FILE=/app/messages.txt
+      - MESSAGE_INTERVAL=1.0
+      - STARTUP_DELAY=4.5
+      - MESSAGE_LOG_FILE=/logs/bot_rs_delta.jsonl
+    volumes:
+      - ./messages.txt:/app/messages.txt:ro
+      - ./dados/historico_mensagens:/logs
+    depends_on:
+      - broker
+      - pubsub-proxy
+      - reference
+      - server-python-1
+      - server-python-2
+      - server-rust-1
+      - server-rust-2
+    networks:
+      - bbs-net
+
+networks:
+  bbs-net:
+    driver: bridge
