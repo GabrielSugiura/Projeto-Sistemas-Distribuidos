@@ -54,8 +54,11 @@ services:
       - SERVER_ID=server-python-1
       - BROKER_BACKEND=tcp://broker:5556
       - PUBSUB_XSUB=tcp://pubsub-proxy:5557
+      - PUBSUB_XPUB=tcp://pubsub-proxy:5558
       - REFERENCE_ADDR=tcp://reference:5559
+      - PEER_PORT=5560
       - HEARTBEAT_EVERY=10
+      - SYNC_EVERY=15
       - DATA_FILE=/data/storage.msgpack
       - MESSAGE_LOG_FILE=/logs/server-python-1.jsonl
     volumes:
@@ -78,8 +81,11 @@ services:
       - SERVER_ID=server-python-2
       - BROKER_BACKEND=tcp://broker:5556
       - PUBSUB_XSUB=tcp://pubsub-proxy:5557
+      - PUBSUB_XPUB=tcp://pubsub-proxy:5558
       - REFERENCE_ADDR=tcp://reference:5559
+      - PEER_PORT=5560
       - HEARTBEAT_EVERY=10
+      - SYNC_EVERY=15
       - DATA_FILE=/data/storage.msgpack
       - MESSAGE_LOG_FILE=/logs/server-python-2.jsonl
     volumes:
@@ -103,8 +109,11 @@ services:
       - SERVER_ID=server-rust-1
       - BROKER_BACKEND=tcp://broker:5556
       - PUBSUB_XSUB=tcp://pubsub-proxy:5557
+      - PUBSUB_XPUB=tcp://pubsub-proxy:5558
       - REFERENCE_ADDR=tcp://reference:5559
+      - PEER_PORT=5560
       - HEARTBEAT_EVERY=10
+      - SYNC_EVERY=15
       - DATA_FILE=/data/storage.msgpack
       - MESSAGE_LOG_FILE=/logs/server-rust-1.jsonl
     volumes:
@@ -127,8 +136,11 @@ services:
       - SERVER_ID=server-rust-2
       - BROKER_BACKEND=tcp://broker:5556
       - PUBSUB_XSUB=tcp://pubsub-proxy:5557
+      - PUBSUB_XPUB=tcp://pubsub-proxy:5558
       - REFERENCE_ADDR=tcp://reference:5559
+      - PEER_PORT=5560
       - HEARTBEAT_EVERY=10
+      - SYNC_EVERY=15
       - DATA_FILE=/data/storage.msgpack
       - MESSAGE_LOG_FILE=/logs/server-rust-2.jsonl
     volumes:
