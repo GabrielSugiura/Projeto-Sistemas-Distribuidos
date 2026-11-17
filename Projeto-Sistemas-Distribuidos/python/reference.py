@@ -8,7 +8,6 @@ import msgpack
 from protocol import (
     LogicalClock,
     now_iso,
-    now_epoch_ms,
     pack_message,
     unpack_message,
     format_log,
@@ -45,7 +44,6 @@ class ReferenceRegistry:
         os.replace(tmp_path, self.filepath)
 
     def register_or_get_rank(self, server_name: str) -> int:
-        """Cadastra servidor sem repetição de nome e retorna seu rank."""
         with self._lock:
             now_mono = time.monotonic()
             now_str = now_iso()
@@ -71,11 +69,9 @@ class ReferenceRegistry:
             return rank
 
     def heartbeat(self, server_name: str) -> int:
-        """Atualiza heartbeat do servidor e garante seu cadastro/disponibilidade."""
         return self.register_or_get_rank(server_name)
 
     def list_available_servers(self) -> list[dict]:
-        """Retorna nome e rank dos servidores atualmente disponíveis."""
         with self._lock:
             now_mono = time.monotonic()
             active = []
@@ -93,7 +89,6 @@ class ReferenceRegistry:
             return active
 
     def purge_expired(self) -> list[str]:
-        """Marca como indisponíveis servidores que não enviaram heartbeat no prazo."""
         with self._lock:
             now_mono = time.monotonic()
             removed: list[str] = []
@@ -142,8 +137,6 @@ def handle_reference_request(
             "server_name": server_name,
             "rank": rank,
             "message": f"Servidor '{server_name}' registrado com rank {rank}.",
-            "reference_timestamp": now_iso(),
-            "reference_epoch_ms": now_epoch_ms(),
             "timestamp": now_iso(),
             "logical_clock": clock.tick_send(),
         }
@@ -169,17 +162,14 @@ def handle_reference_request(
                 "logical_clock": clock.tick_send(),
             }
         rank = registry.heartbeat(server_name)
-        ref_iso = now_iso()
-        ref_ms = now_epoch_ms()
+        # Na Parte 4 o serviço de referência responde apenas OK, sem hora física
         return {
             "status": "ok",
             "action": "heartbeat",
             "server_name": server_name,
             "rank": rank,
             "message": "OK",
-            "reference_timestamp": ref_iso,
-            "reference_epoch_ms": ref_ms,
-            "timestamp": ref_iso,
+            "timestamp": now_iso(),
             "logical_clock": clock.tick_send(),
         }
 
@@ -212,7 +202,7 @@ def main() -> None:
     rep_socket.bind(bind_addr)
 
     print(
-        f"[{now_iso()}] [REFERENCE] Serviço de Referência iniciado em {bind_addr} | Timeout Heartbeat: {heartbeat_timeout}s | Storage: {data_file}",
+        f"[{now_iso()}] [REFERENCE] Serviço de Referência (Parte 4) iniciado em {bind_addr} | Timeout Heartbeat: {heartbeat_timeout}s | Storage: {data_file}",
         flush=True,
     )
 
