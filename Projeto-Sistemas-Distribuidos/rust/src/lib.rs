@@ -30,12 +30,23 @@ pub struct ResponseMessage {
     pub timestamp: String,
 }
 
-#[derive(Debug, Clone)]
-pub struct ScriptEvent {
-    pub event_type: String,
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PubSubMessage {
+    pub channel: String,
     pub user: String,
-    pub channel: Option<String>,
-    pub content: Option<String>,
+    pub content: String,
+    pub server_id: String,
+    pub timestamp: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ReceivedSubDisplay {
+    pub canal: String,
+    pub autor: String,
+    pub mensagem: String,
+    pub servidor_pub: String,
+    pub timestamp_envio: String,
+    pub timestamp_recebimento: String,
 }
 
 #[derive(Serialize)]
@@ -77,7 +88,10 @@ pub fn clean_script_text(text: &str) -> String {
             if next == b'O' {
                 i += 2;
                 continue;
-            } else if (next == b'W' || next == b'M') && i + 2 < bytes.len() && bytes[i + 2].is_ascii_digit() {
+            } else if (next == b'W' || next == b'M')
+                && i + 2 < bytes.len()
+                && bytes[i + 2].is_ascii_digit()
+            {
                 i += 3;
                 while i < bytes.len() && bytes[i].is_ascii_digit() {
                     i += 1;
@@ -96,79 +110,32 @@ pub fn clean_script_text(text: &str) -> String {
     out.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
-pub fn parse_script_events(filepath: &str) -> Vec<ScriptEvent> {
-    let Ok(raw) = fs::read_to_string(filepath) else {
-        return Vec::new();
-    };
-
-    let mut events = Vec::new();
-    let mut current_channel = "geral".to_string();
-
-    for raw_line in raw.lines() {
-        let line = raw_line.trim();
-        if line.is_empty() || line.starts_with("---") || line.starts_with('!') {
-            continue;
-        }
-
-        if line.starts_with("#T:") || line.starts_with("##T:") {
-            if let Some((_, action_part)) = line.split_once(':') {
-                let action_text = clean_script_text(action_part);
-                if !action_text.is_empty() {
-                    events.push(ScriptEvent {
-                        event_type: "post_message".to_string(),
-                        user: "system_irc".to_string(),
-                        channel: Some(current_channel.clone()),
-                        content: Some(format!("* {}", action_text)),
-                    });
-                }
-            }
-            continue;
-        }
-
-        if let Some(joined_user) = line.strip_prefix("#j") {
-            let u = joined_user.trim();
-            if is_valid_user(u) {
-                events.push(ScriptEvent {
-                    event_type: "login".to_string(),
-                    user: u.to_string(),
-                    channel: None,
-                    content: None,
-                });
-            }
-            continue;
-        }
-
-        if line.starts_with("#k") || line.starts_with("#l") {
-            continue;
-        }
-
-        if let Some((speaker_raw, msg_raw)) = line.split_once(':') {
-            let speaker = speaker_raw.trim();
-            let cleaned_msg = clean_script_text(msg_raw);
-            if cleaned_msg.is_empty() || !is_valid_user(speaker) {
+pub fn load_sample_messages(filepath: &str) -> Vec<String> {
+    let mut samples = Vec::new();
+    if let Ok(raw) = fs::read_to_string(filepath) {
+        for raw_line in raw.lines() {
+            let line = raw_line.trim();
+            if line.is_empty()
+                || line.starts_with("---")
+                || line.starts_with('!')
+                || line.starts_with('#')
+            {
                 continue;
             }
-
-            if cleaned_msg.to_lowercase().contains("#hacking") && current_channel != "hacking" {
-                current_channel = "hacking".to_string();
-                events.push(ScriptEvent {
-                    event_type: "create_channel".to_string(),
-                    user: speaker.to_string(),
-                    channel: Some("hacking".to_string()),
-                    content: None,
-                });
+            if let Some((speaker, msg)) = line.split_once(':') {
+                let cleaned = clean_script_text(msg);
+                if cleaned.len() >= 3 {
+                    samples.push(format!("[{}] {}", speaker.trim(), cleaned));
+                }
             }
-
-            events.push(ScriptEvent {
-                event_type: "post_message".to_string(),
-                user: speaker.to_string(),
-                channel: Some(current_channel.clone()),
-                content: Some(cleaned_msg),
-            });
         }
     }
-
-    events
+    if samples.is_empty() {
+        samples.push("Olá pessoal, testando publicação distribuída em Rust!".to_string());
+        samples.push("Canal sincronizado via ZeroMQ PUB/SUB.".to_string());
+        samples.push("Enviando mensagem serializada em MessagePack.".to_string());
+    }
+    samples
 }
 
 pub fn pack_request(req: &RequestMessage) -> Result<Vec<u8>, rmp_serde::encode::Error> {
@@ -187,7 +154,20 @@ pub fn unpack_response(bytes: &[u8]) -> Result<ResponseMessage, rmp_serde::decod
     rmp_serde::from_slice(bytes)
 }
 
-fn record_message_history<T: Serialize>(actor: &str, direction: &str, payload: &T, summary: &str) -> String {
+pub fn pack_pubsub(msg: &PubSubMessage) -> Result<Vec<u8>, rmp_serde::encode::Error> {
+    rmp_serde::to_vec_named(msg)
+}
+
+pub fn unpack_pubsub(bytes: &[u8]) -> Result<PubSubMessage, rmp_serde::decode::Error> {
+    rmp_serde::from_slice(bytes)
+}
+
+fn record_message_history<T: Serialize>(
+    actor: &str,
+    direction: &str,
+    payload: &T,
+    summary: &str,
+) -> String {
     let logged_at = now_iso();
     let log_file =
         env::var("MESSAGE_LOG_FILE").unwrap_or_else(|_| format!("/logs/{}.jsonl", actor));
@@ -235,17 +215,17 @@ pub fn format_request_log(actor: &str, direction: &str, req: &RequestMessage) ->
     let mut out = String::new();
     let _ = writeln!(out, "{}", sep);
     let _ = writeln!(out, "[{}] [{}] {}", logged_at, actor, direction);
-    let _ = writeln!(out, "  action    : {}", req.action);
+    let _ = writeln!(out, "  action      : {}", req.action);
     if let Some(ref u) = req.user {
-        let _ = writeln!(out, "  user      : {}", u);
+        let _ = writeln!(out, "  user        : {}", u);
     }
     if let Some(ref c) = req.channel {
-        let _ = writeln!(out, "  channel   : {}", c);
+        let _ = writeln!(out, "  channel     : {}", c);
     }
     if let Some(ref msg) = req.content {
-        let _ = writeln!(out, "  content   : {}", msg);
+        let _ = writeln!(out, "  content     : {}", msg);
     }
-    let _ = writeln!(out, "  timestamp : {}", req.timestamp);
+    let _ = writeln!(out, "  timestamp   : {}", req.timestamp);
     let _ = write!(out, "{}", sep);
     out
 }
@@ -264,14 +244,60 @@ pub fn format_response_log(actor: &str, direction: &str, rep: &ResponseMessage) 
     let mut out = String::new();
     let _ = writeln!(out, "{}", sep);
     let _ = writeln!(out, "[{}] [{}] {}", logged_at, actor, direction);
-    let _ = writeln!(out, "  status    : {}", rep.status);
-    let _ = writeln!(out, "  action    : {}", rep.action);
-    let _ = writeln!(out, "  message   : {}", rep.message);
+    let _ = writeln!(out, "  status      : {}", rep.status);
+    let _ = writeln!(out, "  action      : {}", rep.action);
+    let _ = writeln!(out, "  message     : {}", rep.message);
     if let Some(ref chs) = rep.channels {
-        let _ = writeln!(out, "  channels  : {:?}", chs);
+        let _ = writeln!(out, "  channels    : {:?}", chs);
     }
-    let _ = writeln!(out, "  server_id : {}", rep.server_id);
-    let _ = writeln!(out, "  timestamp : {}", rep.timestamp);
+    let _ = writeln!(out, "  server_id   : {}", rep.server_id);
+    let _ = writeln!(out, "  timestamp   : {}", rep.timestamp);
+    let _ = write!(out, "{}", sep);
+    out
+}
+
+pub fn format_pubsub_sent_log(actor: &str, msg: &PubSubMessage) -> String {
+    let summary = format!(
+        "channel={}, user={}, content={}, server_id={}, timestamp={}",
+        msg.channel, msg.user, msg.content, msg.server_id, msg.timestamp
+    );
+    let direction = format!("PUBLICADO (PUB) -> TÓPICO '#{}'", msg.channel);
+    let logged_at = record_message_history(actor, &direction, msg, &summary);
+    let sep = "========================================================================";
+    let mut out = String::new();
+    let _ = writeln!(out, "{}", sep);
+    let _ = writeln!(out, "[{}] [{}] {}", logged_at, actor, direction);
+    let _ = writeln!(out, "  channel     : {}", msg.channel);
+    let _ = writeln!(out, "  user        : {}", msg.user);
+    let _ = writeln!(out, "  content     : {}", msg.content);
+    let _ = writeln!(out, "  server_id   : {}", msg.server_id);
+    let _ = writeln!(out, "  timestamp   : {}", msg.timestamp);
+    let _ = write!(out, "{}", sep);
+    out
+}
+
+pub fn format_sub_received_log(actor: &str, display: &ReceivedSubDisplay) -> String {
+    let summary = format!(
+        "canal={}, autor={}, mensagem={}, servidor_pub={}, timestamp_envio={}, timestamp_recebimento={}",
+        display.canal,
+        display.autor,
+        display.mensagem,
+        display.servidor_pub,
+        display.timestamp_envio,
+        display.timestamp_recebimento
+    );
+    let direction = format!("RECEBIDO (SUB) <- CANAL '#{}'", display.canal);
+    let logged_at = record_message_history(actor, &direction, display, &summary);
+    let sep = "========================================================================";
+    let mut out = String::new();
+    let _ = writeln!(out, "{}", sep);
+    let _ = writeln!(out, "[{}] [{}] {}", logged_at, actor, direction);
+    let _ = writeln!(out, "  canal                : {}", display.canal);
+    let _ = writeln!(out, "  autor                : {}", display.autor);
+    let _ = writeln!(out, "  mensagem             : {}", display.mensagem);
+    let _ = writeln!(out, "  servidor_pub         : {}", display.servidor_pub);
+    let _ = writeln!(out, "  timestamp_envio      : {}", display.timestamp_envio);
+    let _ = writeln!(out, "  timestamp_recebimento: {}", display.timestamp_recebimento);
     let _ = write!(out, "{}", sep);
     out
 }
