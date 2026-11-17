@@ -41,8 +41,12 @@ def send_and_recv(
         raw_rep = socket.recv()
         rep = unpack_message(raw_rep)
         clock.update_receive(rep.get("logical_clock"))
+        log_rep = {
+            k: (f"<{len(v)} itens>" if isinstance(v, list) and len(v) > 5 else v)
+            for k, v in rep.items()
+        }
         print(
-            format_log(bot_name, f"RECEBIDO (REP) <- SERVIDOR [clock={clock.value}]", rep),
+            format_log(bot_name, f"RECEBIDO (REP) <- SERVIDOR [clock={clock.value}]", log_rep),
             flush=True,
         )
         return socket, rep
@@ -236,6 +240,20 @@ def main() -> None:
                 },
             )
             time.sleep(message_interval)
+
+        req_socket, rep_hist = send_and_recv(
+            context,
+            req_socket,
+            broker_frontend,
+            bot_name,
+            clock,
+            {"action": "get_history", "user": bot_name, "limit": 20},
+        )
+        if rep_hist and rep_hist.get("status") == "ok":
+            print(
+                f"[{now_iso()}] [{bot_name}] [HISTÓRICO REPLICADO] Servidor '{rep_hist.get('server_id')}' possui {rep_hist.get('total_messages')} mensagens totais replicadas.",
+                flush=True,
+            )
 
 
 if __name__ == "__main__":
