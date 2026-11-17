@@ -87,6 +87,32 @@ impl Default for PhysicalClockSync {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LoginRecord {
+    #[serde(default)]
+    pub op_id: String,
+    pub user: String,
+    pub timestamp: String,
+    #[serde(default)]
+    pub server_id: String,
+    #[serde(default)]
+    pub logical_clock: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PublicationRecord {
+    #[serde(default)]
+    pub op_id: String,
+    pub channel: String,
+    pub user: String,
+    pub content: String,
+    pub server_id: String,
+    pub req_timestamp: String,
+    pub published_at: String,
+    #[serde(default)]
+    pub logical_clock: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RequestMessage {
     pub action: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -95,6 +121,8 @@ pub struct RequestMessage {
     pub channel: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub content: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub limit: Option<usize>,
     #[serde(default)]
     pub timestamp: String,
     #[serde(default)]
@@ -108,6 +136,10 @@ pub struct ResponseMessage {
     pub message: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub channels: Option<Vec<String>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub total_messages: Option<usize>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub messages: Option<Vec<PublicationRecord>>,
     pub server_id: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub server_rank: Option<u64>,
@@ -128,6 +160,30 @@ pub struct PubSubMessage {
     pub server_rank: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub coordinator: Option<String>,
+    pub timestamp: String,
+    #[serde(default)]
+    pub logical_clock: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ReplicationEvent {
+    #[serde(default)]
+    pub topic: String,
+    #[serde(default)]
+    pub op_id: String,
+    #[serde(default)]
+    pub op_type: String,
+    #[serde(default)]
+    pub origin_server: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub user: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub channel: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub content: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub req_timestamp: Option<String>,
+    #[serde(default)]
     pub timestamp: String,
     #[serde(default)]
     pub logical_clock: u64,
@@ -192,6 +248,14 @@ pub struct PeerResponse {
     pub epoch_ms: Option<f64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub hora_correta: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub logins: Option<Vec<LoginRecord>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub channels: Option<Vec<String>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub publications: Option<Vec<PublicationRecord>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub applied_ops: Option<Vec<String>>,
     #[serde(default)]
     pub timestamp: String,
     #[serde(default)]
@@ -238,10 +302,6 @@ struct HistoryEntry<'a, T: Serialize> {
 
 pub fn now_iso() -> String {
     Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true)
-}
-
-pub fn now_epoch_ms() -> f64 {
-    Utc::now().timestamp_millis() as f64
 }
 
 pub fn is_valid_user(user: &str) -> bool {
@@ -342,6 +402,18 @@ pub fn pack_pubsub(msg: &PubSubMessage) -> Result<Vec<u8>, rmp_serde::encode::Er
 }
 
 pub fn unpack_pubsub(bytes: &[u8]) -> Result<PubSubMessage, rmp_serde::decode::Error> {
+    rmp_serde::from_slice(bytes)
+}
+
+pub fn pack_replication_event(
+    ev: &ReplicationEvent,
+) -> Result<Vec<u8>, rmp_serde::encode::Error> {
+    rmp_serde::to_vec_named(ev)
+}
+
+pub fn unpack_replication_event(
+    bytes: &[u8],
+) -> Result<ReplicationEvent, rmp_serde::decode::Error> {
     rmp_serde::from_slice(bytes)
 }
 
@@ -462,27 +534,33 @@ pub fn format_response_log(actor: &str, direction: &str, rep: &ResponseMessage) 
     if let Some(ref chs) = rep.channels {
         let _ = write!(summary, ", channels={:?}", chs);
     }
+    if let Some(tm) = rep.total_messages {
+        let _ = write!(summary, ", total_messages={}", tm);
+    }
 
     let logged_at = record_message_history(actor, direction, rep, &summary);
     let sep = "========================================================================";
     let mut out = String::new();
     let _ = writeln!(out, "{}", sep);
     let _ = writeln!(out, "[{}] [{}] {}", logged_at, actor, direction);
-    let _ = writeln!(out, "  status       : {}", rep.status);
-    let _ = writeln!(out, "  action       : {}", rep.action);
-    let _ = writeln!(out, "  message      : {}", rep.message);
+    let _ = writeln!(out, "  status        : {}", rep.status);
+    let _ = writeln!(out, "  action        : {}", rep.action);
+    let _ = writeln!(out, "  message       : {}", rep.message);
     if let Some(ref chs) = rep.channels {
-        let _ = writeln!(out, "  channels     : {:?}", chs);
+        let _ = writeln!(out, "  channels      : {:?}", chs);
     }
-    let _ = writeln!(out, "  server_id    : {}", rep.server_id);
+    if let Some(tm) = rep.total_messages {
+        let _ = writeln!(out, "  total_messages: {}", tm);
+    }
+    let _ = writeln!(out, "  server_id     : {}", rep.server_id);
     if let Some(rk) = rep.server_rank {
-        let _ = writeln!(out, "  server_rank  : {}", rk);
+        let _ = writeln!(out, "  server_rank   : {}", rk);
     }
     if let Some(ref cd) = rep.coordinator {
-        let _ = writeln!(out, "  coordinator  : {}", cd);
+        let _ = writeln!(out, "  coordinator   : {}", cd);
     }
-    let _ = writeln!(out, "  timestamp    : {}", rep.timestamp);
-    let _ = writeln!(out, "  logical_clock: {}", rep.logical_clock);
+    let _ = writeln!(out, "  timestamp     : {}", rep.timestamp);
+    let _ = writeln!(out, "  logical_clock : {}", rep.logical_clock);
     let _ = write!(out, "{}", sep);
     out
 }
