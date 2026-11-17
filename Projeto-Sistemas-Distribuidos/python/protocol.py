@@ -19,13 +19,11 @@ class LogicalClock:
         self._lock = threading.Lock()
 
     def tick_send(self) -> int:
-        """Incrementa antes de enviar qualquer mensagem e retorna o novo valor."""
         with self._lock:
             self._counter += 1
             return self._counter
 
     def update_receive(self, received_counter: int | None) -> int:
-        """Atualiza com max(local, recebido) ao receber mensagem."""
         with self._lock:
             if isinstance(received_counter, int) and received_counter > self._counter:
                 self._counter = received_counter
@@ -38,14 +36,18 @@ class LogicalClock:
 
 
 class PhysicalClockSync:
-    """Mantém o offset (ms) em relação ao relógio físico do serviço de referência."""
+    """Mantém o offset (ms) do relógio físico sincronizado via algoritmo de Berkeley."""
 
     def __init__(self) -> None:
         self._offset_ms: float = 0.0
         self._lock = threading.Lock()
 
+    def apply_offset_delta(self, delta_ms: float) -> float:
+        with self._lock:
+            self._offset_ms += delta_ms
+            return self._offset_ms
+
     def sync_with_reference(self, t0_local_ms: float, ref_epoch_ms: float, t1_local_ms: float) -> float:
-        """Calcula offset estilo algoritmo de Cristian: ref_time + RTT/2 - t1."""
         rtt_ms = max(0.0, t1_local_ms - t0_local_ms)
         estimated_ref_ms = ref_epoch_ms + (rtt_ms / 2.0)
         offset = estimated_ref_ms - t1_local_ms
@@ -53,9 +55,12 @@ class PhysicalClockSync:
             self._offset_ms = offset
             return self._offset_ms
 
-    def now_iso(self) -> str:
+    def current_epoch_ms(self) -> float:
         with self._lock:
-            adjusted_sec = (time.time() * 1000.0 + self._offset_ms) / 1000.0
+            return (time.time() * 1000.0) + self._offset_ms
+
+    def now_iso(self) -> str:
+        adjusted_sec = self.current_epoch_ms() / 1000.0
         return (
             datetime.fromtimestamp(adjusted_sec, tz=timezone.utc)
             .isoformat(timespec="milliseconds")
