@@ -1,7 +1,7 @@
 use bbs_rust::{
     format_request_log, format_response_log, format_sub_received_log, load_sample_messages,
-    now_iso, pack_request, unpack_pubsub, unpack_response, ReceivedSubDisplay, RequestMessage,
-    ResponseMessage,
+    now_iso, pack_request, unpack_pubsub, unpack_response, LogicalClock, ReceivedSubDisplay,
+    RequestMessage, ResponseMessage,
 };
 use rand::seq::SliceRandom;
 use rand::Rng;
@@ -28,13 +28,13 @@ fn send_and_recv(
     socket: &mut zmq::Socket,
     endpoint: &str,
     bot_name: &str,
+    clock: &LogicalClock,
     mut req: RequestMessage,
 ) -> Option<ResponseMessage> {
     req.timestamp = now_iso();
-    println!(
-        "{}",
-        format_request_log(bot_name, "ENVIADO (REQ) -> SERVIDOR", &req)
-    );
+    req.logical_clock = clock.tick_send();
+    let out_dir = format!("ENVIADO (REQ) -> SERVIDOR [clock={}]", req.logical_clock);
+    println!("{}", format_request_log(bot_name, &out_dir, &req));
     let _ = io::stdout().flush();
 
     let packed = match pack_request(&req) {
@@ -65,10 +65,9 @@ fn send_and_recv(
     match socket.recv_bytes(0) {
         Ok(raw_rep) => match unpack_response(&raw_rep) {
             Ok(rep) => {
-                println!(
-                    "{}",
-                    format_response_log(bot_name, "RECEBIDO (REP) <- SERVIDOR", &rep)
-                );
+                let updated_clk = clock.update_receive(rep.logical_clock);
+                let in_dir = format!("RECEBIDO (REP) <- SERVIDOR [clock={}]", updated_clk);
+                println!("{}", format_response_log(bot_name, &in_dir, &rep));
                 let _ = io::stdout().flush();
                 Some(rep)
             }
@@ -100,6 +99,7 @@ fn subscriber_worker(
     ctx: zmq::Context,
     pubsub_xpub: String,
     bot_name: String,
+    clock: Arc<LogicalClock>,
     subscribed_channels: Arc<Mutex<HashSet<String>>>,
 ) {
     let sub_socket = ctx.socket(zmq::SUB).expect("Falha ao criar socket SUB");
@@ -139,6 +139,8 @@ fn subscriber_worker(
                 if parts.len() >= 2 {
                     let topic = String::from_utf8_lossy(&parts[0]).to_string();
                     if let Ok(msg_data) = unpack_pubsub(&parts[1]) {
+                        let msg_clock = msg_data.logical_clock;
+                        let updated_clk = clock.update_receive(msg_clock);
                         let display = ReceivedSubDisplay {
                             canal: topic,
                             autor: msg_data.user,
@@ -146,6 +148,8 @@ fn subscriber_worker(
                             servidor_pub: msg_data.server_id,
                             timestamp_envio: msg_data.timestamp,
                             timestamp_recebimento: received_at,
+                            clock_recebido: msg_clock,
+                            clock_local_atual: updated_clk,
                         };
                         println!("{}", format_sub_received_log(&bot_name, &display));
                         let _ = io::stdout().flush();
@@ -193,6 +197,7 @@ fn main() {
 
     thread::sleep(Duration::from_secs_f64(startup_delay_secs));
 
+    let clock = Arc::new(LogicalClock::new(0));
     let ctx = zmq::Context::new();
     let mut req_socket = configure_req_socket(&ctx, &broker_frontend);
 
@@ -200,18 +205,20 @@ fn main() {
     let sub_ctx = ctx.clone();
     let sub_endpoint = pubsub_xpub.clone();
     let sub_bot = bot_name.clone();
+    let sub_clock = Arc::clone(&clock);
     let sub_set = Arc::clone(&subscribed_channels);
 
     thread::spawn(move || {
-        subscriber_worker(sub_ctx, sub_endpoint, sub_bot, sub_set);
+        subscriber_worker(sub_ctx, sub_endpoint, sub_bot, sub_clock, sub_set);
     });
 
     println!(
-        "[{}] [{}] Conectado | Broker REQ: {} | Proxy SUB: {}",
+        "[{}] [{}] Conectado | Broker REQ: {} | Proxy SUB: {} | clock={}",
         now_iso(),
         bot_name,
         broker_frontend,
-        pubsub_xpub
+        pubsub_xpub,
+        clock.value()
     );
     let _ = io::stdout().flush();
 
@@ -223,9 +230,12 @@ fn main() {
             channel: None,
             content: None,
             timestamp: String::new(),
+            logical_clock: 0,
         };
 
-        if let Some(rep) = send_and_recv(&ctx, &mut req_socket, &broker_frontend, &bot_name, req) {
+        if let Some(rep) =
+            send_and_recv(&ctx, &mut req_socket, &broker_frontend, &bot_name, &clock, req)
+        {
             if rep.status == "ok" {
                 logged_in = true;
                 continue;
@@ -247,10 +257,16 @@ fn main() {
             channel: None,
             content: None,
             timestamp: String::new(),
+            logical_clock: 0,
         };
-        if let Some(rep) =
-            send_and_recv(&ctx, &mut req_socket, &broker_frontend, &bot_name, list_req)
-        {
+        if let Some(rep) = send_and_recv(
+            &ctx,
+            &mut req_socket,
+            &broker_frontend,
+            &bot_name,
+            &clock,
+            list_req,
+        ) {
             if rep.status == "ok" {
                 if let Some(chs) = rep.channels {
                     available_channels = chs;
@@ -277,10 +293,16 @@ fn main() {
                 channel: Some(new_channel.clone()),
                 content: None,
                 timestamp: String::new(),
+                logical_clock: 0,
             };
-            if let Some(rep) =
-                send_and_recv(&ctx, &mut req_socket, &broker_frontend, &bot_name, create_req)
-            {
+            if let Some(rep) = send_and_recv(
+                &ctx,
+                &mut req_socket,
+                &broker_frontend,
+                &bot_name,
+                &clock,
+                create_req,
+            ) {
                 if rep.status == "ok" {
                     available_channels.push(new_channel);
                 }
@@ -341,9 +363,17 @@ fn main() {
                 channel: Some(target_channel.clone()),
                 content: Some(content),
                 timestamp: String::new(),
+                logical_clock: 0,
             };
 
-            let _ = send_and_recv(&ctx, &mut req_socket, &broker_frontend, &bot_name, pub_req);
+            let _ = send_and_recv(
+                &ctx,
+                &mut req_socket,
+                &broker_frontend,
+                &bot_name,
+                &clock,
+                pub_req,
+            );
             thread::sleep(interval);
         }
     }
