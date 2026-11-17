@@ -1,9 +1,14 @@
 use bbs_rust::{
-    format_request_log, format_response_log, now_iso, pack_request, parse_script_events,
-    unpack_response, RequestMessage, ResponseMessage,
+    format_request_log, format_response_log, format_sub_received_log, load_sample_messages,
+    now_iso, pack_request, unpack_pubsub, unpack_response, ReceivedSubDisplay, RequestMessage,
+    ResponseMessage,
 };
+use rand::seq::SliceRandom;
+use rand::Rng;
+use std::collections::HashSet;
 use std::env;
 use std::io::{self, Write};
+use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 
@@ -26,13 +31,21 @@ fn send_and_recv(
     mut req: RequestMessage,
 ) -> Option<ResponseMessage> {
     req.timestamp = now_iso();
-    println!("{}", format_request_log(bot_name, "ENVIADO -> SERVIDOR", &req));
+    println!(
+        "{}",
+        format_request_log(bot_name, "ENVIADO (REQ) -> SERVIDOR", &req)
+    );
     let _ = io::stdout().flush();
 
     let packed = match pack_request(&req) {
         Ok(b) => b,
         Err(e) => {
-            eprintln!("[{}] [{}] Erro ao serializar MessagePack: {}", now_iso(), bot_name, e);
+            eprintln!(
+                "[{}] [{}] Erro ao serializar MessagePack: {}",
+                now_iso(),
+                bot_name,
+                e
+            );
             return None;
         }
     };
@@ -52,7 +65,10 @@ fn send_and_recv(
     match socket.recv_bytes(0) {
         Ok(raw_rep) => match unpack_response(&raw_rep) {
             Ok(rep) => {
-                println!("{}", format_response_log(bot_name, "RECEBIDO <- SERVIDOR", &rep));
+                println!(
+                    "{}",
+                    format_response_log(bot_name, "RECEBIDO (REP) <- SERVIDOR", &rep)
+                );
                 let _ = io::stdout().flush();
                 Some(rep)
             }
@@ -80,26 +96,86 @@ fn send_and_recv(
     }
 }
 
+fn subscriber_worker(
+    ctx: zmq::Context,
+    pubsub_xpub: String,
+    bot_name: String,
+    subscribed_channels: Arc<Mutex<HashSet<String>>>,
+) {
+    let sub_socket = ctx.socket(zmq::SUB).expect("Falha ao criar socket SUB");
+    sub_socket
+        .set_rcvtimeo(500)
+        .expect("Falha ao definir RCVTIMEO no SUB");
+    sub_socket.set_linger(0).expect("Falha ao definir LINGER");
+    sub_socket
+        .connect(&pubsub_xpub)
+        .expect("Falha ao conectar ao XPUB do proxy Pub/Sub");
+
+    let mut applied_topics: HashSet<String> = HashSet::new();
+
+    loop {
+        let pending: Vec<String> = {
+            let guard = subscribed_channels.lock().unwrap();
+            guard.difference(&applied_topics).cloned().collect()
+        };
+
+        for topic in pending {
+            if sub_socket.set_subscribe(topic.as_bytes()).is_ok() {
+                applied_topics.insert(topic.clone());
+                println!(
+                    "[{}] [{}] [SUB] Inscrito no tópico/canal '#{}' em {}",
+                    now_iso(),
+                    bot_name,
+                    topic,
+                    pubsub_xpub
+                );
+                let _ = io::stdout().flush();
+            }
+        }
+
+        match sub_socket.recv_multipart(0) {
+            Ok(parts) => {
+                let received_at = now_iso();
+                if parts.len() >= 2 {
+                    let topic = String::from_utf8_lossy(&parts[0]).to_string();
+                    if let Ok(msg_data) = unpack_pubsub(&parts[1]) {
+                        let display = ReceivedSubDisplay {
+                            canal: topic,
+                            autor: msg_data.user,
+                            mensagem: msg_data.content,
+                            servidor_pub: msg_data.server_id,
+                            timestamp_envio: msg_data.timestamp,
+                            timestamp_recebimento: received_at,
+                        };
+                        println!("{}", format_sub_received_log(&bot_name, &display));
+                        let _ = io::stdout().flush();
+                    }
+                }
+            }
+            Err(zmq::Error::EAGAIN) => continue,
+            Err(err) => {
+                eprintln!("[{}] [{}] [SUB] Erro ZMQ: {}", now_iso(), bot_name, err);
+                thread::sleep(Duration::from_secs(1));
+            }
+        }
+    }
+}
+
 fn main() {
     let bot_name = env::var("BOT_NAME").unwrap_or_else(|_| "bot_rs".to_string());
-    let bot_index: usize = env::var("BOT_INDEX")
-        .unwrap_or_else(|_| "2".to_string())
-        .parse()
-        .unwrap_or(2);
-    let total_bots: usize = env::var("TOTAL_BOTS")
-        .unwrap_or_else(|_| "4".to_string())
-        .parse()
-        .unwrap_or(4);
     let broker_frontend =
         env::var("BROKER_FRONTEND").unwrap_or_else(|_| "tcp://broker:5555".to_string());
-    let target_channels_env =
-        env::var("TARGET_CHANNELS").unwrap_or_else(|_| "geral,hacking,rust-lang".to_string());
+    let pubsub_xpub =
+        env::var("PUBSUB_XPUB").unwrap_or_else(|_| "tcp://pubsub-proxy:5558".to_string());
+    let candidates_env = env::var("CANDIDATE_CHANNELS").unwrap_or_else(|_| {
+        "geral,hacking,rust-lang,zeromq-libzmq,sistemas-distribuidos,avisos,random".to_string()
+    });
     let messages_file =
         env::var("MESSAGES_FILE").unwrap_or_else(|_| "/app/messages.txt".to_string());
     let message_interval_secs: f64 = env::var("MESSAGE_INTERVAL")
-        .unwrap_or_else(|_| "2.0".to_string())
+        .unwrap_or_else(|_| "1.0".to_string())
         .parse()
-        .unwrap_or(2.0);
+        .unwrap_or(1.0);
     let startup_delay_secs: f64 = env::var("STARTUP_DELAY")
         .unwrap_or_else(|_| "4.0".to_string())
         .parse()
@@ -107,26 +183,38 @@ fn main() {
 
     let interval = Duration::from_secs_f64(message_interval_secs);
 
-    let target_channels: Vec<String> = target_channels_env
+    let candidate_channels: Vec<String> = candidates_env
         .split(',')
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty())
         .collect();
 
+    let sample_messages = load_sample_messages(&messages_file);
+
     thread::sleep(Duration::from_secs_f64(startup_delay_secs));
 
     let ctx = zmq::Context::new();
-    let mut socket = configure_req_socket(&ctx, &broker_frontend);
+    let mut req_socket = configure_req_socket(&ctx, &broker_frontend);
+
+    let subscribed_channels: Arc<Mutex<HashSet<String>>> = Arc::new(Mutex::new(HashSet::new()));
+    let sub_ctx = ctx.clone();
+    let sub_endpoint = pubsub_xpub.clone();
+    let sub_bot = bot_name.clone();
+    let sub_set = Arc::clone(&subscribed_channels);
+
+    thread::spawn(move || {
+        subscriber_worker(sub_ctx, sub_endpoint, sub_bot, sub_set);
+    });
 
     println!(
-        "[{}] [{}] Conectado ao Broker em {}",
+        "[{}] [{}] Conectado | Broker REQ: {} | Proxy SUB: {}",
         now_iso(),
         bot_name,
-        broker_frontend
+        broker_frontend,
+        pubsub_xpub
     );
     let _ = io::stdout().flush();
 
-    // 1. Login do próprio bot (repete até obter sucesso)
     let mut logged_in = false;
     while !logged_in {
         let req = RequestMessage {
@@ -137,119 +225,126 @@ fn main() {
             timestamp: String::new(),
         };
 
-        if let Some(rep) = send_and_recv(&ctx, &mut socket, &broker_frontend, &bot_name, req) {
+        if let Some(rep) = send_and_recv(&ctx, &mut req_socket, &broker_frontend, &bot_name, req) {
             if rep.status == "ok" {
                 logged_in = true;
                 continue;
             }
         }
-        thread::sleep(interval);
+        thread::sleep(Duration::from_secs(1));
     }
 
-    thread::sleep(interval);
+    let mut rng = rand::thread_rng();
+    let mut cycle: u64 = 0;
 
-    // 2. Listar canais disponíveis
-    let mut existing_channels: Vec<String> = Vec::new();
-    let list_req = RequestMessage {
-        action: "list_channels".to_string(),
-        user: Some(bot_name.clone()),
-        channel: None,
-        content: None,
-        timestamp: String::new(),
-    };
-    if let Some(rep) = send_and_recv(&ctx, &mut socket, &broker_frontend, &bot_name, list_req) {
-        if rep.status == "ok" {
-            if let Some(chs) = rep.channels {
-                existing_channels = chs;
-            }
-        }
-    }
+    loop {
+        cycle += 1;
 
-    thread::sleep(interval);
-
-    // 3. Criar canais iniciais que ainda não existem
-    for channel in &target_channels {
-        if existing_channels.contains(channel) && channel != "geral" {
-            continue;
-        }
-
-        let create_req = RequestMessage {
-            action: "create_channel".to_string(),
+        let mut available_channels: Vec<String> = Vec::new();
+        let list_req = RequestMessage {
+            action: "list_channels".to_string(),
             user: Some(bot_name.clone()),
-            channel: Some(channel.clone()),
+            channel: None,
             content: None,
             timestamp: String::new(),
         };
-        let _ = send_and_recv(&ctx, &mut socket, &broker_frontend, &bot_name, create_req);
-        thread::sleep(interval);
-    }
+        if let Some(rep) =
+            send_and_recv(&ctx, &mut req_socket, &broker_frontend, &bot_name, list_req)
+        {
+            if rep.status == "ok" {
+                if let Some(chs) = rep.channels {
+                    available_channels = chs;
+                }
+            }
+        }
 
-    // 4. Simular mensagens e eventos do arquivo messages.txt com intervalo de 2s
-    let script_events = parse_script_events(&messages_file);
-    let my_events: Vec<_> = script_events
-        .into_iter()
-        .enumerate()
-        .filter(|(idx, _)| idx % total_bots == bot_index)
-        .map(|(_, ev)| ev)
-        .collect();
+        if available_channels.len() < 5 {
+            let missing: Vec<String> = candidate_channels
+                .iter()
+                .filter(|c| !available_channels.contains(c))
+                .cloned()
+                .collect();
 
-    println!(
-        "[{}] [{}] Iniciando simulação de {} mensagens/eventos de {} (intervalo: {}s)...",
-        now_iso(),
-        bot_name,
-        my_events.len(),
-        messages_file,
-        message_interval_secs
-    );
-    let _ = io::stdout().flush();
+            let new_channel = if let Some(chosen) = missing.choose(&mut rng) {
+                chosen.clone()
+            } else {
+                format!("canal-{}-{}", bot_name, rng.gen_range(100..999))
+            };
 
-    for ev in my_events {
-        let req = match ev.event_type.as_str() {
-            "login" => RequestMessage {
-                action: "login".to_string(),
-                user: Some(ev.user),
-                channel: None,
-                content: None,
-                timestamp: String::new(),
-            },
-            "create_channel" => RequestMessage {
+            let create_req = RequestMessage {
                 action: "create_channel".to_string(),
-                user: Some(ev.user),
-                channel: ev.channel,
+                user: Some(bot_name.clone()),
+                channel: Some(new_channel.clone()),
                 content: None,
                 timestamp: String::new(),
-            },
-            _ => RequestMessage {
-                action: "post_message".to_string(),
-                user: Some(ev.user),
-                channel: ev.channel,
-                content: ev.content,
-                timestamp: String::new(),
-            },
+            };
+            if let Some(rep) =
+                send_and_recv(&ctx, &mut req_socket, &broker_frontend, &bot_name, create_req)
+            {
+                if rep.status == "ok" {
+                    available_channels.push(new_channel);
+                }
+            }
+        }
+
+        let chosen_sub: Option<String> = {
+            let guard = subscribed_channels.lock().unwrap();
+            if guard.len() < 3 {
+                let unsubscribed: Vec<String> = available_channels
+                    .iter()
+                    .filter(|c| !guard.contains(*c))
+                    .cloned()
+                    .collect();
+                unsubscribed.choose(&mut rng).cloned()
+            } else {
+                None
+            }
         };
 
-        let _ = send_and_recv(&ctx, &mut socket, &broker_frontend, &bot_name, req);
-        thread::sleep(interval);
-    }
+        if let Some(topic) = chosen_sub {
+            {
+                let mut guard = subscribed_channels.lock().unwrap();
+                guard.insert(topic);
+            }
+            thread::sleep(Duration::from_millis(300));
+        }
 
-    // 5. Listagem final de canais
-    let final_list_req = RequestMessage {
-        action: "list_channels".to_string(),
-        user: Some(bot_name.clone()),
-        channel: None,
-        content: None,
-        timestamp: String::new(),
-    };
-    let _ = send_and_recv(&ctx, &mut socket, &broker_frontend, &bot_name, final_list_req);
+        if available_channels.is_empty() {
+            available_channels.push("geral".to_string());
+        }
 
-    println!(
-        "[{}] [{}] Simulação concluída com sucesso.",
-        now_iso(),
-        bot_name
-    );
-    let _ = io::stdout().flush();
+        let target_channel = available_channels
+            .choose(&mut rng)
+            .cloned()
+            .unwrap_or_else(|| "geral".to_string());
 
-    loop {
-        thread::sleep(Duration::from_secs(30));
+        println!(
+            "[{}] [{}] Ciclo #{}: publicando 10 mensagens em '#{}' (intervalo: {}s)...",
+            now_iso(),
+            bot_name,
+            cycle,
+            target_channel,
+            message_interval_secs
+        );
+        let _ = io::stdout().flush();
+
+        for msg_idx in 1..=10 {
+            let base_text = sample_messages
+                .choose(&mut rng)
+                .cloned()
+                .unwrap_or_else(|| "Mensagem de teste em Rust".to_string());
+            let content = format!("({}/10) {}", msg_idx, base_text);
+
+            let pub_req = RequestMessage {
+                action: "publish".to_string(),
+                user: Some(bot_name.clone()),
+                channel: Some(target_channel.clone()),
+                content: Some(content),
+                timestamp: String::new(),
+            };
+
+            let _ = send_and_recv(&ctx, &mut req_socket, &broker_frontend, &bot_name, pub_req);
+            thread::sleep(interval);
+        }
     }
 }
