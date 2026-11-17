@@ -1,4 +1,4 @@
-# Sistema de Troca de Mensagens Instantâneas (BBS/IRC Distribuído) - Versão Final (Partes 1 a 5)
+# Sistema de Troca de Mensagens Instantâneas (Projeto Sistemas Distribuidos)
 
 Este repositório contém a implementação completa das **5 partes** do projeto de Sistemas Distribuídos: um sistema de troca de mensagens instantâneas inspirado em **BBS** e **IRC**, construído sobre **ZeroMQ**, **MessagePack**, **Docker** e **Docker Compose**, com servidores e clientes heterogêneos em **Python** e **Rust**.
 
