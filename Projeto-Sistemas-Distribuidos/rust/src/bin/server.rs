@@ -1,12 +1,15 @@
 use bbs_rust::{
-    format_request_log, format_response_log, is_valid_channel, is_valid_user, now_iso,
-    pack_response, unpack_request, RequestMessage, ResponseMessage,
+    format_pubsub_sent_log, format_request_log, format_response_log, is_valid_channel,
+    is_valid_user, now_iso, pack_pubsub, pack_response, unpack_request, PubSubMessage,
+    RequestMessage, ResponseMessage,
 };
 use serde::{Deserialize, Serialize};
 use std::env;
 use std::fs;
 use std::io::{self, Write};
 use std::path::Path;
+use std::thread;
+use std::time::Duration;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct LoginRecord {
@@ -15,11 +18,13 @@ struct LoginRecord {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-struct ChatMessageRecord {
-    user: String,
+struct PublicationRecord {
     channel: String,
+    user: String,
     content: String,
-    timestamp: String,
+    server_id: String,
+    req_timestamp: String,
+    published_at: String,
 }
 
 #[derive(Debug, Default, Serialize, Deserialize)]
@@ -29,7 +34,7 @@ struct StorageState {
     #[serde(default)]
     channels: Vec<String>,
     #[serde(default)]
-    messages: Vec<ChatMessageRecord>,
+    publications: Vec<PublicationRecord>,
 }
 
 struct DiskStorage {
@@ -115,15 +120,25 @@ impl DiskStorage {
         (true, format!("Canal '{}' criado com sucesso.", channel))
     }
 
-    fn record_message(&mut self, user: &str, channel: &str, content: &str, timestamp: &str) {
+    fn record_publication(
+        &mut self,
+        channel: &str,
+        user: &str,
+        content: &str,
+        server_id: &str,
+        req_timestamp: &str,
+        published_at: &str,
+    ) {
         if !self.state.channels.iter().any(|c| c == channel) && is_valid_channel(channel) {
             self.state.channels.push(channel.to_string());
         }
-        self.state.messages.push(ChatMessageRecord {
-            user: user.to_string(),
+        self.state.publications.push(PublicationRecord {
             channel: channel.to_string(),
+            user: user.to_string(),
             content: content.to_string(),
-            timestamp: timestamp.to_string(),
+            server_id: server_id.to_string(),
+            req_timestamp: req_timestamp.to_string(),
+            published_at: published_at.to_string(),
         });
         self.save();
     }
@@ -132,6 +147,7 @@ impl DiskStorage {
 fn handle_request(
     server_id: &str,
     storage: &mut DiskStorage,
+    pub_socket: &zmq::Socket,
     req: &RequestMessage,
 ) -> ResponseMessage {
     let action = req.action.trim();
@@ -202,25 +218,74 @@ fn handle_request(
                 timestamp: now_iso(),
             }
         }
-        "post_message" => {
-            let channel = req.channel.as_deref().unwrap_or("geral").trim();
+        "publish" | "post_message" => {
+            let channel = req.channel.as_deref().unwrap_or("").trim();
             let content = req.content.as_deref().unwrap_or("").trim();
-            if content.is_empty() {
+
+            if channel.is_empty() || !is_valid_channel(channel) {
                 return ResponseMessage {
                     status: "error".to_string(),
-                    action: "post_message".to_string(),
-                    message: "Conteúdo da mensagem não pode ser vazio.".to_string(),
+                    action: "publish".to_string(),
+                    message: format!("Canal inválido para publicação: '{}'.", channel),
                     channels: None,
                     server_id: server_id.to_string(),
                     timestamp: now_iso(),
                 };
             }
+            if content.is_empty() {
+                return ResponseMessage {
+                    status: "error".to_string(),
+                    action: "publish".to_string(),
+                    message: "Conteúdo da publicação não pode ser vazio.".to_string(),
+                    channels: None,
+                    server_id: server_id.to_string(),
+                    timestamp: now_iso(),
+                };
+            }
+
+            let pub_ts = now_iso();
             let author = if user.is_empty() { "anon" } else { user };
-            storage.record_message(author, channel, content, req_ts);
+            let pub_msg = PubSubMessage {
+                channel: channel.to_string(),
+                user: author.to_string(),
+                content: content.to_string(),
+                server_id: server_id.to_string(),
+                timestamp: pub_ts.clone(),
+            };
+
+            match pack_pubsub(&pub_msg) {
+                Ok(packed) => {
+                    if let Err(err) = pub_socket.send_multipart([channel.as_bytes(), &packed], 0) {
+                        return ResponseMessage {
+                            status: "error".to_string(),
+                            action: "publish".to_string(),
+                            message: format!("Erro ao publicar no canal '#{}': {}", channel, err),
+                            channels: None,
+                            server_id: server_id.to_string(),
+                            timestamp: now_iso(),
+                        };
+                    }
+                    println!("{}", format_pubsub_sent_log(server_id, &pub_msg));
+                    let _ = io::stdout().flush();
+                }
+                Err(err) => {
+                    return ResponseMessage {
+                        status: "error".to_string(),
+                        action: "publish".to_string(),
+                        message: format!("Erro ao serializar publicação MessagePack: {}", err),
+                        channels: None,
+                        server_id: server_id.to_string(),
+                        timestamp: now_iso(),
+                    };
+                }
+            }
+
+            storage.record_publication(channel, author, content, server_id, req_ts, &pub_ts);
+
             ResponseMessage {
                 status: "ok".to_string(),
-                action: "post_message".to_string(),
-                message: format!("Mensagem de '{}' registrada em '#{}'.", author, channel),
+                action: "publish".to_string(),
+                message: format!("Mensagem publicada no canal '#{}' com sucesso.", channel),
                 channels: None,
                 server_id: server_id.to_string(),
                 timestamp: now_iso(),
@@ -245,27 +310,38 @@ fn main() {
     let server_id = env::var("SERVER_ID").unwrap_or_else(|_| "server-rust".to_string());
     let broker_backend =
         env::var("BROKER_BACKEND").unwrap_or_else(|_| "tcp://broker:5556".to_string());
+    let pubsub_xsub =
+        env::var("PUBSUB_XSUB").unwrap_or_else(|_| "tcp://pubsub-proxy:5557".to_string());
     let data_file = env::var("DATA_FILE").unwrap_or_else(|_| "/data/storage.msgpack".to_string());
 
     let mut storage = DiskStorage::new(&data_file);
 
     let ctx = zmq::Context::new();
-    let socket = ctx.socket(zmq::REP).expect("Falha ao criar socket REP");
-    socket
+    let rep_socket = ctx.socket(zmq::REP).expect("Falha ao criar socket REP");
+    rep_socket
         .connect(&broker_backend)
         .expect("Falha ao conectar ao backend do Broker");
 
+    let pub_socket = ctx.socket(zmq::PUB).expect("Falha ao criar socket PUB");
+    pub_socket.set_linger(0).expect("Falha ao definir LINGER");
+    pub_socket
+        .connect(&pubsub_xsub)
+        .expect("Falha ao conectar ao XSUB do proxy Pub/Sub");
+
+    thread::sleep(Duration::from_millis(500));
+
     println!(
-        "[{}] [{}] Conectado ao Broker em {} | Persistência: {}",
+        "[{}] [{}] Conectado | Broker REP: {} | Proxy PUB: {} | Storage: {}",
         now_iso(),
         server_id,
         broker_backend,
+        pubsub_xsub,
         data_file
     );
     let _ = io::stdout().flush();
 
     loop {
-        let raw_req = match socket.recv_bytes(0) {
+        let raw_req = match rep_socket.recv_bytes(0) {
             Ok(bytes) => bytes,
             Err(err) => {
                 eprintln!("[{}] [{}] Erro ZMQ ao receber: {}", now_iso(), server_id, err);
@@ -275,9 +351,12 @@ fn main() {
 
         let rep = match unpack_request(&raw_req) {
             Ok(req) => {
-                println!("{}", format_request_log(&server_id, "RECEBIDO <- CLIENTE", &req));
+                println!(
+                    "{}",
+                    format_request_log(&server_id, "RECEBIDO (REQ) <- CLIENTE", &req)
+                );
                 let _ = io::stdout().flush();
-                handle_request(&server_id, &mut storage, &req)
+                handle_request(&server_id, &mut storage, &pub_socket, &req)
             }
             Err(err) => ResponseMessage {
                 status: "error".to_string(),
@@ -289,10 +368,13 @@ fn main() {
             },
         };
 
-        println!("{}", format_response_log(&server_id, "ENVIADO -> CLIENTE", &rep));
+        println!(
+            "{}",
+            format_response_log(&server_id, "ENVIADO (REP) -> CLIENTE", &rep)
+        );
         let _ = io::stdout().flush();
         if let Ok(packed) = pack_response(&rep) {
-            let _ = socket.send(packed, 0);
+            let _ = rep_socket.send(packed, 0);
         }
     }
 }
