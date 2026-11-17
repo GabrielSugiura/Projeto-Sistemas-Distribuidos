@@ -4,6 +4,7 @@ import threading
 import time
 import zmq
 from protocol import (
+    LogicalClock,
     now_iso,
     pack_message,
     unpack_message,
@@ -26,15 +27,24 @@ def send_and_recv(
     socket: zmq.Socket,
     endpoint: str,
     bot_name: str,
+    clock: LogicalClock,
     payload: dict,
 ) -> tuple[zmq.Socket, dict | None]:
     payload["timestamp"] = now_iso()
-    print(format_log(bot_name, "ENVIADO (REQ) -> SERVIDOR", payload), flush=True)
+    payload["logical_clock"] = clock.tick_send()
+    print(
+        format_log(bot_name, f"ENVIADO (REQ) -> SERVIDOR [clock={payload['logical_clock']}]", payload),
+        flush=True,
+    )
     try:
         socket.send(pack_message(payload))
         raw_rep = socket.recv()
         rep = unpack_message(raw_rep)
-        print(format_log(bot_name, "RECEBIDO (REP) <- SERVIDOR", rep), flush=True)
+        clock.update_receive(rep.get("logical_clock"))
+        print(
+            format_log(bot_name, f"RECEBIDO (REP) <- SERVIDOR [clock={clock.value}]", rep),
+            flush=True,
+        )
         return socket, rep
     except zmq.ZMQError as exc:
         print(
@@ -50,6 +60,7 @@ def subscriber_worker(
     context: zmq.Context,
     pubsub_xpub: str,
     bot_name: str,
+    clock: LogicalClock,
     subscribed_channels: set[str],
     sub_lock: threading.Lock,
 ) -> None:
@@ -67,7 +78,7 @@ def subscriber_worker(
             sub_socket.setsockopt(zmq.SUBSCRIBE, topic.encode("utf-8"))
             applied_topics.add(topic)
             print(
-                f"[{now_iso()}] [{bot_name}] [SUB] Inscrito no tÃ³pico/canal '#{topic}' em {pubsub_xpub}",
+                f"[{now_iso()}] [{bot_name}] [SUB] Inscrito no tópico/canal '#{topic}' em {pubsub_xpub}",
                 flush=True,
             )
 
@@ -77,6 +88,8 @@ def subscriber_worker(
             if len(parts) >= 2:
                 topic = parts[0].decode("utf-8", errors="replace")
                 msg_data = unpack_message(parts[1])
+                msg_clock = msg_data.get("logical_clock")
+                updated_clock = clock.update_receive(msg_clock)
                 display_payload = {
                     "canal": topic,
                     "autor": msg_data.get("user", "desconhecido"),
@@ -84,9 +97,15 @@ def subscriber_worker(
                     "servidor_pub": msg_data.get("server_id", ""),
                     "timestamp_envio": msg_data.get("timestamp", ""),
                     "timestamp_recebimento": received_at,
+                    "clock_recebido": msg_clock,
+                    "clock_local_atual": updated_clock,
                 }
                 print(
-                    format_log(bot_name, f"RECEBIDO (SUB) <- CANAL '#{topic}'", display_payload),
+                    format_log(
+                        bot_name,
+                        f"RECEBIDO (SUB) <- CANAL '#{topic}' [clock={updated_clock}]",
+                        display_payload,
+                    ),
                     flush=True,
                 )
         except zmq.Again:
@@ -113,6 +132,7 @@ def main() -> None:
 
     time.sleep(startup_delay)
 
+    clock = LogicalClock(0)
     context = zmq.Context()
     req_socket = create_req_socket(context, broker_frontend)
 
@@ -121,13 +141,13 @@ def main() -> None:
 
     sub_thread = threading.Thread(
         target=subscriber_worker,
-        args=(context, pubsub_xpub, bot_name, subscribed_channels, sub_lock),
+        args=(context, pubsub_xpub, bot_name, clock, subscribed_channels, sub_lock),
         daemon=True,
     )
     sub_thread.start()
 
     print(
-        f"[{now_iso()}] [{bot_name}] Conectado | Broker REQ: {broker_frontend} | Proxy SUB: {pubsub_xpub}",
+        f"[{now_iso()}] [{bot_name}] Conectado | Broker REQ: {broker_frontend} | Proxy SUB: {pubsub_xpub} | clock={clock.value}",
         flush=True,
     )
 
@@ -138,6 +158,7 @@ def main() -> None:
             req_socket,
             broker_frontend,
             bot_name,
+            clock,
             {"action": "login", "user": bot_name},
         )
         if rep and rep.get("status") == "ok":
@@ -155,6 +176,7 @@ def main() -> None:
             req_socket,
             broker_frontend,
             bot_name,
+            clock,
             {"action": "list_channels", "user": bot_name},
         )
         if rep_list and rep_list.get("status") == "ok":
@@ -172,6 +194,7 @@ def main() -> None:
                 req_socket,
                 broker_frontend,
                 bot_name,
+                clock,
                 {"action": "create_channel", "user": bot_name, "channel": new_channel},
             )
             if rep_create and rep_create.get("status") == "ok":
@@ -204,6 +227,7 @@ def main() -> None:
                 req_socket,
                 broker_frontend,
                 bot_name,
+                clock,
                 {
                     "action": "publish",
                     "user": bot_name,
